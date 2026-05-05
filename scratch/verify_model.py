@@ -1,58 +1,53 @@
 import sys
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # Add the packages/core to sys.path to import the model
 sys.path.append(os.path.join(os.getcwd(), "packages/core"))
 
 try:
     from netpulse_core.models.device import Device, DeviceStatus
+    from netpulse_core.models.discovery import DiscoveryResult, DiscoveryMethod
 except ImportError as e:
     print(f"Error: {e}")
     print("Please install pydantic: pip install pydantic")
     sys.exit(1)
 
-def test_device_model_v2():
-    print("--- Testing Refactored Device Model ---")
+def test_discovery_result():
+    print("--- Testing Refined DiscoveryResult Model ---")
     
-    # 1. Valid device creation
+    start = datetime.now(timezone.utc)
+    end = start + timedelta(seconds=15)
+    
+    # 1. Create a discovery result
     try:
-        device = Device(
-            ip="192.168.1.1",
-            mac="00:11:22:33:44:55",
-            hostname="gateway.local",
-            status=DeviceStatus.UP,
-            rtt_ms=0.5,
-            metadata={"source": "uv_validated"}
+        result = DiscoveryResult(
+            network="192.168.1.0/24",
+            methods=[DiscoveryMethod.ARP, DiscoveryMethod.ICMP],
+            status="completed",
+            started_at=start,
+            finished_at=end,
+            devices=[
+                Device(ip="192.168.1.1", status=DeviceStatus.UP),
+                Device(ip="192.168.1.2", status=DeviceStatus.UP),
+                Device(ip="192.168.1.3", status=DeviceStatus.DOWN)
+            ],
+            stats={"scanned": 254, "responsive": 2},
+            errors=["Timeout on 192.168.1.5"]
         )
-        print(f"SUCCESS: Created device with ID: {device.id}")
-        print(f"Timestamp (UTC): {device.created_at}")
         
-        # Verify JSON schema output
+        print(f"SUCCESS: Created discovery result for {result.network}")
+        print(f"Methods: {result.methods}")
+        print(f"Duration: {result.duration_s}s")
+        print(f"Total Discovered (UP): {result.total_discovered}")
+        
+        # Verify JSON
         print("\nJSON Data Sample:")
-        print(device.model_dump_json(indent=2))
+        print(result.model_dump_json(indent=2))
         
     except Exception as e:
-        print(f"FAILURE: Could not create valid device: {e}")
-
-    # 2. Assignment Validation check
-    print("\n--- Testing Assignment Validation ---")
-    try:
-        device = Device(ip="10.0.0.1")
-        device.ip = "not-an-ip" # Should trigger validation error
-        print("FAILURE: Accepted an invalid IP during assignment")
-    except Exception as e:
-        print(f"SUCCESS: Assignment validation caught error: {type(e).__name__}")
-
-    # 3. UUID Consistency
-    print("\n--- Testing UUID Consistency ---")
-    d1 = Device(ip="1.1.1.1")
-    d2 = Device(ip="1.1.1.1")
-    if d1.id != d2.id:
-        print(f"SUCCESS: Generated unique UUIDs: {d1.id} vs {d2.id}")
-    else:
-        print("FAILURE: UUID collision detected")
+        print(f"FAILURE: {e}")
 
 if __name__ == "__main__":
-    test_device_model_v2()
+    test_discovery_result()
