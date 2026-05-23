@@ -34,7 +34,7 @@ graph TD
 | Component Path | Language | Description |
 | :--- | :--- | :--- |
 | [**`rust/`**](file:///home/bonheur/netpulse/rust) | Rust | High-speed native core utilizing raw sockets (`pnet`, `socket2`) for ARP framing and ICMP sweeps. |
-| [**`packages/core/`**](file:///home/bonheur/netpulse/packages/core) | Python | Central orchestration layer (`netpulse_core`). Defines domain Pydantic V2 models and handles service coordination. |
+| [**`packages/core/`**](file:///home/bonheur/netpulse/packages/core) | Python | Central orchestration layer (`netpulse_core`). Defines domain Pydantic V2 models, handles service coordination, and powers the Subnetting & VLSM calculation engine. |
 | [**`packages/engine/`**](file:///home/bonheur/netpulse/packages/engine) | Python | Loader package (`netpulse_engine`) exposing compiled Rust bindings to Python, featuring a zero-privilege mock fallback. |
 | [**`apps/cli/`**](file:///home/bonheur/netpulse/apps/cli) | Python | Premium CLI tool (`netpulse_cli`) powered by `Typer` and `Rich` for beautiful terminal data representation. |
 | [**`apps/api/`**](file:///home/bonheur/netpulse/apps/api) | Python | Production-ready FastAPI service (`netpulse_api`) featuring custom rate-limiters, security headers, and CORS restrictions. |
@@ -99,6 +99,10 @@ The CLI offers stunning console aesthetics with dynamic loading states, table ou
 ### Subcommands
 *   **`version`**: Shows package and CLI version details.
 *   **`discover [target]`**: Sweeps the target CIDR network.
+*   **`subnet info [ip_or_cidr]`**: Calculates network boundaries and displays bitwise binary alignments.
+*   **`subnet split [parent_network]`**: Partitions a parent CIDR into equal-sized subnets (FLSM) by count (`--subnets`) or host capacity (`--hosts`).
+*   **`subnet vlsm [parent_network]`**: Calculates optimal subnets using Variable-Length Subnet Masking (VLSM) for varying host size requirements.
+*   **`subnet discover [ip]`**: Finds which containing CIDR subnet block from a candidate list contains the given IP address.
 
 ### Execution Examples
 ```bash
@@ -108,8 +112,11 @@ sudo .venv/bin/python apps/cli/netpulse_cli/main.py discover 172.19.57.0/24
 # Output results directly in formatted JSON
 NETPULSE_MOCK=1 .venv/bin/python apps/cli/netpulse_cli/main.py discover 172.19.57.0/24 --format json
 
-# Customize timeout and scan protocol
-NETPULSE_MOCK=1 .venv/bin/python apps/cli/netpulse_cli/main.py discover 172.19.57.0/24 -m icmp -t 2000
+# Subnet bitwise alignment calculator
+.venv/bin/python apps/cli/netpulse_cli/main.py subnet info 192.168.1.50/24
+
+# Perform VLSM allocation for varying departmental size requirements
+.venv/bin/python apps/cli/netpulse_cli/main.py subnet vlsm 192.168.1.0/24 --req "HR=120,Dev=50,Sales=20,Links=2"
 ```
 
 ---
@@ -189,11 +196,54 @@ Orchestrates a discovery scan.
     }
     ```
 
+#### `POST /api/v1/subnet/info`
+Acts as a subnet calculator. Computes detailed boundary configurations.
+*   **Request Payload**:
+    ```json
+    {
+      "ip": "192.168.1.50",
+      "mask_or_prefix": "24"
+    }
+    ```
+
+#### `POST /api/v1/subnet/split`
+Partitions a parent CIDR into equal-sized subnets (FLSM).
+*   **Request Payload**:
+    ```json
+    {
+      "parent_network": "192.168.1.0/24",
+      "subnets_count": 4
+    }
+    ```
+
+#### `POST /api/v1/subnet/vlsm`
+Calculates optimal Variable-Length Subnet Masking (VLSM) allocations.
+*   **Request Payload**:
+    ```json
+    {
+      "parent_network": "192.168.1.0/24",
+      "requirements": [
+        {"name": "HR", "hosts": 120},
+        {"name": "Dev", "hosts": 50}
+      ]
+    }
+    ```
+
+#### `POST /api/v1/subnet/discover`
+Matches a target IP against candidate subnets to locate its container.
+*   **Request Payload**:
+    ```json
+    {
+      "ip": "192.168.1.45",
+      "subnets": ["192.168.1.0/26", "192.168.1.64/26"]
+    }
+    ```
+
 ---
 
 ## 🧪 Running Automated Tests
 
-NetPulse comes with **26 automated unit and integration tests** built on top of `pytest` and `httpx`.
+NetPulse comes with **54 automated unit and integration tests** built on top of `pytest` and `httpx`.
 
 Tests run securely inside the local sandbox using mock overrides without needing root/sudo permissions:
 
