@@ -1,6 +1,7 @@
 from .device import Device, DeviceStatus
 from .discovery import DiscoveryResult, DiscoveryMethod
 from .subnet import SubnetInfo, VLSMRequirement, VLSMAllocation, VLSMResult
+from .drift import DeviceChange, DriftResult
 
 __all__ = [
     "Device",
@@ -10,5 +11,7 @@ __all__ = [
     "SubnetInfo",
     "VLSMRequirement",
     "VLSMAllocation",
-    "VLSMResult"
+    "VLSMResult",
+    "DeviceChange",
+    "DriftResult"
 ]

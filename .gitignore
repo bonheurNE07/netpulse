@@ -25,3 +25,4 @@ rust/target/
 
 # Scratch / Temporary Files
 scratch/
+netpulse.db

@@ -26,6 +26,13 @@ from netpulse_core.services.subnet import (
     allocate_vlsm,
     find_containing_subnet
 )
+from netpulse_core.services.db import DatabaseService
+from netpulse_core.services.drift import DriftService
+from netpulse_core.models.drift import DriftResult
+
+# Initialize persistent SQLite storage & drift services
+db_service = DatabaseService("netpulse.db")
+drift_service = DriftService()
 
 app = typer.Typer(
     name="netpulse",
@@ -238,6 +245,12 @@ def discover(
             border_style="yellow",
             box=box.ROUNDED,
         ))
+
+    # Automatically persist completed sweeps to local SQLite history
+    try:
+        db_service.save_scan(result)
+    except Exception:
+        pass
 
     # Exit code based on status
     if result.status == "failed":
@@ -696,10 +709,294 @@ def subnet_discover(
             title="[bold red]Lookup Failed[/bold red]",
             border_style="red",
             box=box.ROUNDED,
+            ))
+        raise typer.Exit(code=1)
+
+
+# -------------------------------------------------------------
+# Storage & Network Drift CLI Commands
+# -------------------------------------------------------------
+def render_drift(result: DriftResult):
+    # 1. Summary Header
+    summary_text = (
+        f"[bold cyan]Target Subnet :[/] [white]{result.network}[/]\n"
+        f"[bold cyan]Baseline Scan :[/] [white]{result.old_timestamp.replace('T', ' ')[:19] if result.old_timestamp else 'N/A'}[/] [dim white]({str(result.old_scan_id)[:8] + '...' if result.old_scan_id else 'None'})[/]\n"
+        f"[bold cyan]Current Sweep :[/] [white]{result.new_timestamp.replace('T', ' ')[:19]}[/] [dim white]({str(result.new_scan_id)[:8] + '...'})[/]"
+    )
+    console.print(Panel(
+        Align.center(summary_text),
+        title="[bold magenta]⚡ Network Drift Analysis Summary ⚡[/bold magenta]",
+        border_style="magenta",
+        box=box.DOUBLE,
+    ))
+
+    # 2. Joined Devices (Green)
+    if result.joined:
+        table_joined = Table(box=box.ROUNDED, header_style="bold green", border_style="green", title="[bold green]Devices Joined (Newly Online) ✔[/bold green]")
+        table_joined.add_column("IP Address", style="bold green")
+        table_joined.add_column("MAC Address", style="white")
+        table_joined.add_column("Latency", style="yellow", justify="right")
+        table_joined.add_column("Vendor", style="dim green")
+        for d in result.joined:
+            mac_str = d.mac if d.mac else "N/A"
+            rtt_str = f"{d.rtt_ms:.3f} ms" if d.rtt_ms is not None else "N/A"
+            vendor_str = d.vendor if d.vendor else "-"
+            table_joined.add_row(str(d.ip), mac_str, rtt_str, vendor_str)
+        console.print(table_joined)
+
+    # 3. Left Devices (Red)
+    if result.left:
+        table_left = Table(box=box.ROUNDED, header_style="bold red", border_style="red", title="[bold red]Devices Left (Offline or Missing) ✖[/bold red]")
+        table_left.add_column("IP Address", style="bold red")
+        table_left.add_column("MAC Address", style="dim white")
+        table_left.add_column("Vendor", style="dim red")
+        for d in result.left:
+            mac_str = d.mac if d.mac else "N/A"
+            vendor_str = d.vendor if d.vendor else "-"
+            table_left.add_row(str(d.ip), mac_str, vendor_str)
+        console.print(table_left)
+
+    # 4. Modified Devices (Yellow)
+    if result.modified:
+        table_mod = Table(box=box.ROUNDED, header_style="bold yellow", border_style="yellow", title="[bold yellow]Devices Modified (Configuration Changed) ⚠️[/bold yellow]")
+        table_mod.add_column("IP Address", style="bold yellow")
+        table_mod.add_column("Previous MAC", style="dim white")
+        table_mod.add_column("New MAC", style="white")
+        table_mod.add_column("Previous Latency", style="dim white", justify="right")
+        table_mod.add_column("New Latency", style="yellow", justify="right")
+        for c in result.modified:
+            mac_old = c.mac_old if c.mac_old else "N/A"
+            mac_new = c.mac_new if c.mac_new else "N/A"
+            rtt_old = f"{c.rtt_old:.3f} ms" if c.rtt_old is not None else "N/A"
+            rtt_new = f"{c.rtt_new:.3f} ms" if c.rtt_new is not None else "N/A"
+            
+            # Highlight MAC reassignment as warning
+            mac_display_new = f"[bold red]{mac_new}[/]" if c.mac_old != c.mac_new else mac_new
+            table_mod.add_row(c.ip, mac_old, mac_display_new, rtt_old, rtt_new)
+        console.print(table_mod)
+
+    # 5. Unchanged summary
+    if result.unchanged:
+        console.print(f"[dim white]• {len(result.unchanged)} device(s) remained unchanged and active since baseline.[/dim white]\n")
+    
+    # 6. Overall stats
+    if not result.joined and not result.left and not result.modified:
+        console.print(Panel(
+            Align.center("[bold green]Zero changes detected. Subnet state is perfectly stable! ✔[/bold green]"),
+            border_style="green",
+            box=box.ROUNDED
+        ))
+
+
+@app.command(name="discover-history", help="Query all past discovery scan summaries.")
+def discover_history(
+    network: Optional[str] = typer.Argument(
+        None,
+        help="Filter scan histories by target subnet CIDR (e.g. 192.168.1.0/24)."
+    )
+):
+    if network:
+        try:
+            ipaddress.ip_network(network, strict=False)
+        except ValueError as e:
+            console.print(Panel(
+                f"[bold red]Validation Error:[/] Invalid CIDR network '[yellow]{network}[/]'.\nDetails: {e}",
+                border_style="red",
+                box=box.ROUNDED,
+            ))
+            raise typer.Exit(code=1)
+
+    with console.status("[bold cyan]Retrieving history...[/bold cyan]"):
+        history = db_service.get_scan_history(network)
+
+    if not history:
+        console.print(Panel(
+            "[bold yellow]No historic scans found in the local database.[/bold yellow]\nRun [bold cyan]netpulse discover <target>[/] first.",
+            title="[bold yellow]No History[/bold yellow]",
+            border_style="yellow",
+            box=box.ROUNDED,
+        ))
+        raise typer.Exit(code=0)
+
+    table = Table(
+        box=box.ROUNDED,
+        header_style="bold magenta",
+        border_style="cyan",
+        title="Discovery Scans History",
+        title_style="bold cyan underline"
+    )
+    table.add_column("Scan ID", style="dim white", justify="left")
+    table.add_column("Target Subnet", style="bold cyan", justify="left")
+    table.add_column("Status", justify="center")
+    table.add_column("Active Hosts", style="bold green", justify="right")
+    table.add_column("Total Subnet IPs", style="yellow", justify="right")
+    table.add_column("Started At (UTC)", style="white", justify="left")
+    table.add_column("Protocols", style="dim white", justify="left")
+
+    for row in history:
+        status_str = "[bold green]COMPLETED ●[/]" if row["status"] == "completed" else "[bold yellow]PARTIAL ▲[/]" if row["status"] == "partial" else "[bold red]FAILED ■[/]"
+        table.add_row(
+            str(row["id"])[:8] + "...",
+            row["network"],
+            status_str,
+            str(row["responsive_count"]),
+            str(row["scanned_count"]),
+            row["started_at"].replace("T", " ")[:19],
+            ", ".join(row["methods"]).upper()
+        )
+    console.print(table)
+
+
+@app.command(name="discover-drift", help="Scan a network and instantly analyze change drift against baseline history.")
+def discover_drift(
+    target: str = typer.Argument(
+        ...,
+        help="Target CIDR network address range to sweep (e.g. 192.168.1.0/24).",
+    ),
+    methods: Optional[List[str]] = typer.Option(
+        None,
+        "--method",
+        "-m",
+        help="Discovery protocol(s) to use: arp, icmp. Defaults to arp.",
+    ),
+    timeout: int = typer.Option(
+        1000,
+        "--timeout",
+        "-t",
+        help="Timeout in milliseconds for responses.",
+    ),
+    interface: Optional[str] = typer.Option(
+        None,
+        "--interface",
+        "-i",
+        help="Explicit network interface to sweep on (Ony used by ARP).",
+    )
+):
+    # 1. Validate target CIDR network
+    try:
+        ipaddress.ip_network(target, strict=False)
+    except ValueError as e:
+        console.print(Panel(
+            f"[bold red]Error:[/] Invalid target network CIDR '[yellow]{target}[/]'.\nDetails: {e}",
+            title="[bold red]Malformed Target Range[/bold red]",
+            border_style="red",
+            box=box.ROUNDED,
         ))
         raise typer.Exit(code=1)
 
-# Register the subnet sub-typer command group
+    # 2. Fetch baseline scan from SQLite
+    try:
+        baseline = db_service.get_latest_scan(target)
+    except Exception as db_err:
+        console.print(Panel(f"Failed to fetch baseline scan: {db_err}", border_style="yellow"))
+        baseline = None
+
+    # 3. Parse and validate methods
+    valid_methods = {"arp": DiscoveryMethod.ARP, "icmp": DiscoveryMethod.ICMP}
+    parsed_methods = []
+    if not methods:
+        parsed_methods = [DiscoveryMethod.ARP]
+    else:
+        for m in methods:
+            m_lower = m.lower()
+            if m_lower not in valid_methods:
+                console.print(Panel(
+                    f"[bold red]Error:[/] Invalid discovery method '[yellow]{m}[/]'.\nSupported: arp, icmp.",
+                    border_style="red",
+                    box=box.ROUNDED,
+                ))
+                raise typer.Exit(code=1)
+            parsed_methods.append(valid_methods[m_lower])
+
+    # 4. Execute new sweep
+    with console.status(
+        f"[bold cyan]Sweeping network [magenta]{target}[/] for drift updates...[/bold cyan]",
+        spinner="dots"
+    ):
+        try:
+            service = DiscoveryService()
+            new_result = asyncio.run(service.discover_network(
+                target_network=target,
+                methods=parsed_methods,
+                timeout_ms=timeout,
+                interface=interface
+            ))
+        except Exception as e:
+            console.print(Panel(
+                f"[bold red]Sweep Failed Unhandled Exception:[/] {e}",
+                border_style="red",
+                box=box.ROUNDED,
+            ))
+            raise typer.Exit(code=1)
+
+    # Handle permission errors
+    is_permission_error = False
+    for err in new_result.errors:
+        if "permission denied" in err.lower() or "operation not permitted" in err.lower():
+            is_permission_error = True
+            break
+
+    if is_permission_error:
+        console.print(Panel(
+            "[bold red]Privileges Required:[/] NetPulse requires elevated raw socket capabilities.\nRun with sudo or grant setcap.",
+            border_style="red",
+            box=box.ROUNDED,
+        ))
+        raise typer.Exit(code=1)
+
+    # 5. Calculate drift comparison
+    try:
+        drift_res = drift_service.calculate_drift(new_result, baseline)
+    except Exception as e:
+        console.print(Panel(
+            f"[bold red]Drift Calculation Failed:[/] {e}",
+            border_style="red",
+            box=box.ROUNDED,
+        ))
+        raise typer.Exit(code=1)
+
+    # 6. Render comparison visual panels
+    render_drift(drift_res)
+
+    # 7. Persist new scan in SQLite database
+    try:
+        db_service.save_scan(new_result)
+    except Exception:
+        pass
+
+
+@app.command(name="discover-compare", help="Compare two specific historic sweeps by their Scan UUIDs.")
+def discover_compare(
+    scan_id_old: str = typer.Argument(
+        ...,
+        help="Scan UUID of the baseline scan."
+    ),
+    scan_id_new: str = typer.Argument(
+        ...,
+        help="Scan UUID of the comparison target scan."
+    )
+):
+    with console.status("[bold cyan]Loading scan details from SQLite...[/bold cyan]"):
+        try:
+            old_scan = db_service.get_scan(scan_id_old)
+            if not old_scan:
+                console.print(Panel(f"Baseline scan with UUID '[yellow]{scan_id_old}[/]' not found.", border_style="red"))
+                raise typer.Exit(code=1)
+
+            new_scan = db_service.get_scan(scan_id_new)
+            if not new_scan:
+                console.print(Panel(f"Comparison scan with UUID '[yellow]{scan_id_new}[/]' not found.", border_style="red"))
+                raise typer.Exit(code=1)
+
+            drift_res = drift_service.calculate_drift(new_scan, old_scan)
+        except Exception as e:
+            console.print(Panel(f"Failed to calculate compare drift: {e}", border_style="red"))
+            raise typer.Exit(code=1)
+
+    render_drift(drift_res)
+
+
+# Register Typer command groups
 app.add_typer(subnet_app, name="subnet")
 
 if __name__ == "__main__":

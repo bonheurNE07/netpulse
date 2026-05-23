@@ -98,7 +98,10 @@ The CLI offers stunning console aesthetics with dynamic loading states, table ou
 
 ### Subcommands
 *   **`version`**: Shows package and CLI version details.
-*   **`discover [target]`**: Sweeps the target CIDR network.
+*   **`discover [target]`**: Sweeps the target CIDR network and automatically stores the result in history.
+*   **`discover-history [network]`**: Queries all past discovery scan summaries from local SQLite storage.
+*   **`discover-drift [target]`**: Sweeps the network target and instantly computes status drift against baseline history.
+*   **`discover-compare [old_scan_uuid] [new_scan_uuid]`**: Compares two specific past sweeps in database history.
 *   **`subnet info [ip_or_cidr]`**: Calculates network boundaries and displays bitwise binary alignments.
 *   **`subnet split [parent_network]`**: Partitions a parent CIDR into equal-sized subnets (FLSM) by count (`--subnets`) or host capacity (`--hosts`).
 *   **`subnet vlsm [parent_network]`**: Calculates optimal subnets using Variable-Length Subnet Masking (VLSM) for varying host size requirements.
@@ -243,7 +246,7 @@ Matches a target IP against candidate subnets to locate its container.
 
 ## 🧪 Running Automated Tests
 
-NetPulse comes with **54 automated unit and integration tests** built on top of `pytest` and `httpx`.
+NetPulse comes with **69 automated unit and integration tests** built on top of `pytest` and `httpx`.
 
 Tests run securely inside the local sandbox using mock overrides without needing root/sudo permissions:
 

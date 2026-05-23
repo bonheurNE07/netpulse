@@ -23,6 +23,13 @@ from netpulse_core.services.subnet import (
     allocate_vlsm,
     find_containing_subnet
 )
+from netpulse_core.services.db import DatabaseService
+from netpulse_core.services.drift import DriftService
+from netpulse_core.models.drift import DriftResult
+
+# Initialize persistent SQLite storage & drift services
+db_service = DatabaseService("netpulse.db")
+drift_service = DriftService()
 
 # Configure structured logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -205,6 +212,12 @@ async def discover(scan_req: ScanRequest, request: Request):
             }
         )
 
+    # Automatically persist completed scans in history
+    try:
+        db_service.save_scan(result)
+    except Exception as db_err:
+        logger.error(f"Failed to persist discovery scan to history database: {db_err}")
+
     # Return Pydantic object directly; FastAPI encodes cleanly
     return result
 
@@ -301,5 +314,176 @@ def discover_containing_subnet(req: SubnetDiscoverRequest):
             detail={
                 "error": "SubnetLookupError",
                 "message": str(e)
+            }
+        )
+
+
+# 8. SQLite Storage & Network Drift Request Models
+class ScanCompareRequest(BaseModel):
+    scan_id_old: str = Field(..., description="UUID of the old benchmark scan.", examples=["7b86da45-ad65-4b55-b200-92a41a71a998"])
+    scan_id_new: str = Field(..., description="UUID of the new comparison scan.", examples=["9f164b38-2d88-4fb3-a912-1d542a17cb45"])
+
+
+# 9. SQLite Storage & Network Drift Endpoints
+@app.get("/api/v1/scans", response_model=List[Dict[str, Any]], status_code=status.HTTP_200_OK)
+def get_scans_history(network: Optional[str] = None):
+    """
+    Retrieves the list of all past discovery scan summaries. Supports filtering by target CIDR network block.
+    """
+    try:
+        return db_service.get_scan_history(network)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "DatabaseError",
+                "message": f"Failed to retrieve scan history: {e}"
+            }
+        )
+
+@app.get("/api/v1/scans/{scan_id}", response_model=DiscoveryResult, status_code=status.HTTP_200_OK)
+def get_scan_by_id(scan_id: str):
+    """
+    Fetches the complete results of a specific scan session by its UUID.
+    """
+    try:
+        scan_res = db_service.get_scan(scan_id)
+        if not scan_res:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "ScanNotFound",
+                    "message": f"Scan with ID '{scan_id}' not found in local database."
+                }
+            )
+        return scan_res
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "DatabaseError",
+                "message": f"Failed to retrieve scan: {e}"
+            }
+        )
+
+@app.post("/api/v1/discover/drift", response_model=DriftResult, status_code=status.HTTP_200_OK)
+async def discover_network_drift(scan_req: ScanRequest, request: Request):
+    """
+    Executes a new discovery sweep, compares it against the most recent saved completed sweep on that network,
+    calculates drift statistics, saves the new run, and returns the comprehensive analysis.
+    """
+    # Enforce rate-limiting for active network scans
+    check_rate_limit(request)
+
+    # 1. Fetch benchmark baseline
+    try:
+        baseline = db_service.get_latest_scan(scan_req.target_network)
+    except Exception as db_err:
+        logger.error(f"Failed to fetch baseline scan from database: {db_err}")
+        baseline = None
+
+    # 2. Run new sweep
+    valid_methods = {"arp": DiscoveryMethod.ARP, "icmp": DiscoveryMethod.ICMP}
+    parsed_methods = []
+    if scan_req.methods:
+        for m in scan_req.methods:
+            parsed_methods.append(valid_methods[m.lower()])
+    else:
+        parsed_methods = [DiscoveryMethod.ARP]
+
+    try:
+        service = DiscoveryService()
+        new_result = await service.discover_network(
+            target_network=scan_req.target_network,
+            methods=parsed_methods,
+            timeout_ms=scan_req.timeout_ms,
+            interface=scan_req.interface
+        )
+    except Exception as e:
+        logger.exception("Internal orchestration error during network sweep")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "OrchestrationError",
+                "message": f"Orchestration failure during network sweep: {e}"
+            }
+        )
+
+    # Handle privileges errors
+    is_permission_error = False
+    permission_err_msg = ""
+    for err in new_result.errors:
+        if "permission denied" in err.lower() or "operation not permitted" in err.lower():
+            is_permission_error = True
+            permission_err_msg = err
+            break
+
+    if is_permission_error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "PrivilegeError",
+                "message": "NetPulse server requires elevated privileges to generate raw sockets.",
+                "details": permission_err_msg
+            }
+        )
+
+    # 3. Calculate drift
+    try:
+        drift_res = drift_service.calculate_drift(new_result, baseline)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "DriftCalculationError",
+                "message": f"Failed to compute network drift: {e}"
+            }
+        )
+
+    # 4. Save new result to history database
+    try:
+        db_service.save_scan(new_result)
+    except Exception as db_err:
+        logger.error(f"Failed to persist new scan run to history database: {db_err}")
+
+    return drift_res
+
+@app.post("/api/v1/scans/compare", response_model=DriftResult, status_code=status.HTTP_200_OK)
+def compare_historic_scans(req: ScanCompareRequest):
+    """
+    Directly compares two existing historical scans in the database.
+    """
+    try:
+        old_scan = db_service.get_scan(req.scan_id_old)
+        if not old_scan:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "ScanNotFound",
+                    "message": f"Baseline scan with ID '{req.scan_id_old}' not found."
+                }
+            )
+
+        new_scan = db_service.get_scan(req.scan_id_new)
+        if not new_scan:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "ScanNotFound",
+                    "message": f"Comparison scan with ID '{req.scan_id_new}' not found."
+                }
+            )
+
+        return drift_service.calculate_drift(new_scan, old_scan)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "ComparisonError",
+                "message": f"Failed to compare scans: {e}"
             }
         )
