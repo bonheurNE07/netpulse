@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from netpulse_core.models.device import Device, DeviceStatus
 from netpulse_core.models.discovery import DiscoveryResult, DiscoveryMethod
+from netpulse_core.models.ssh import SshExecutionAudit
 
 
 class DatabaseService:
@@ -73,10 +74,24 @@ class DatabaseService:
                 );
             """)
             
+            # 3. SSH Audit Table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS ssh_audit (
+                    id TEXT PRIMARY KEY,
+                    command TEXT NOT NULL,
+                    targets TEXT NOT NULL,
+                    success_count INTEGER NOT NULL,
+                    failed_count INTEGER NOT NULL,
+                    executed_at TEXT NOT NULL,
+                    results TEXT NOT NULL
+                );
+            """)
+            
             # Create indexes for rapid subnet history queries
             conn.execute("CREATE INDEX IF NOT EXISTS idx_scans_network ON scans (network);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_scan_id ON devices (scan_id);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_ip ON devices (ip);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ssh_audit_executed_at ON ssh_audit (executed_at);")
             conn.commit()
 
     def save_scan(self, result: DiscoveryResult):
@@ -255,6 +270,64 @@ class DatabaseService:
                 })
         return history
 
+    def save_ssh_audit(self, audit: SshExecutionAudit):
+        """
+        Saves a multi-host SSH execution audit record to the SQLite database.
+        """
+        targets_str = ",".join(audit.targets)
+        results_list = []
+        for res in audit.results:
+            results_list.append({
+                "ip": res.ip,
+                "status": res.status,
+                "stdout": res.stdout,
+                "stderr": res.stderr,
+                "latency_ms": res.latency_ms,
+                "negotiated_kex": res.negotiated_kex,
+                "negotiated_cipher": res.negotiated_cipher,
+                "error_message": res.error_message
+            })
+        results_str = json.dumps(results_list)
+        executed_iso = audit.executed_at.isoformat() if hasattr(audit.executed_at, "isoformat") else str(audit.executed_at)
+
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO ssh_audit (
+                    id, command, targets, success_count, failed_count, executed_at, results
+                ) VALUES (?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    str(audit.id),
+                    audit.command,
+                    targets_str,
+                    audit.success_count,
+                    audit.failed_count,
+                    executed_iso,
+                    results_str
+                )
+            )
+            conn.commit()
+
+    def get_ssh_history(self) -> List[Dict[str, Any]]:
+        """
+        Queries and returns all historical SSH executions.
+        """
+        history = []
+        with self._get_connection() as conn:
+            rows = conn.execute("SELECT * FROM ssh_audit ORDER BY executed_at DESC;").fetchall()
+            for r in rows:
+                history.append({
+                    "id": r["id"],
+                    "command": r["command"],
+                    "targets": r["targets"].split(",") if r["targets"] else [],
+                    "success_count": r["success_count"],
+                    "failed_count": r["failed_count"],
+                    "executed_at": r["executed_at"],
+                    "results": json.loads(r["results"]) if r["results"] else []
+                })
+        return history
+
     def clear_history(self):
         """
         Helper to wipe the SQLite tables (useful for unit testing setups).
@@ -262,4 +335,5 @@ class DatabaseService:
         with self._get_connection() as conn:
             conn.execute("DELETE FROM devices;")
             conn.execute("DELETE FROM scans;")
+            conn.execute("DELETE FROM ssh_audit;")
             conn.commit()

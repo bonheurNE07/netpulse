@@ -29,10 +29,13 @@ from netpulse_core.services.subnet import (
 from netpulse_core.services.db import DatabaseService
 from netpulse_core.services.drift import DriftService
 from netpulse_core.models.drift import DriftResult
+from netpulse_core.models.ssh import SshHostConfig, SshStatus
+from netpulse_core.services.ssh_runner import SshRunnerService
 
 # Initialize persistent SQLite storage & drift services
 db_service = DatabaseService("netpulse.db")
 drift_service = DriftService()
+ssh_runner = SshRunnerService(db_service)
 
 app = typer.Typer(
     name="netpulse",
@@ -996,8 +999,221 @@ def discover_compare(
     render_drift(drift_res)
 
 
+# SSH Command Group
+ssh_app = typer.Typer(
+    help="NetPulse SSH: Intelligent, high-speed configuration and execution engine for network devices.",
+    no_args_is_help=True
+)
+
+@ssh_app.command(name="run", help="Concurrently execute diagnostic or configuration commands across network devices.")
+def ssh_run(
+    targets_input: str = typer.Argument(
+        ...,
+        metavar="HOSTS",
+        help="Target IPs (comma-separated, e.g. 192.168.1.5,192.168.1.20) or CIDR block (e.g. 192.168.1.0/24)."
+    ),
+    command: str = typer.Argument(
+        ...,
+        help="Command string to execute (e.g., 'show ip interface brief')."
+    ),
+    username: str = typer.Option(
+        ...,
+        "--username",
+        "-u",
+        help="SSH login username."
+    ),
+    password: Optional[str] = typer.Option(
+        None,
+        "--password",
+        "-p",
+        help="SSH login password. Will prompt securely if omitted.",
+        prompt=True,
+        hide_input=True
+    ),
+    enable_password: Optional[str] = typer.Option(
+        None,
+        "--enable-password",
+        "-e",
+        help="Cisco privilege exec mode password (optional). Will prompt securely if specified without password.",
+        hide_input=True
+    ),
+    port: int = typer.Option(
+        22,
+        "--port",
+        help="SSH port."
+    ),
+    auto_negotiate: bool = typer.Option(
+        True,
+        "--auto-negotiate/--no-auto-negotiate",
+        help="Enable dynamic legacy key-exchange and cipher fallbacks."
+    ),
+    ignore_host_keys: bool = typer.Option(
+        True,
+        "--ignore-host-keys/--no-ignore-host-keys",
+        help="Bypass SSH Strict Host Key verification checking."
+    ),
+    timeout: int = typer.Option(
+        10,
+        "--timeout",
+        "-t",
+        help="Connection timeout in seconds."
+    )
+):
+    # Parse target hosts
+    hosts_list = []
+    is_cidr = False
+    try:
+        ipaddress.ip_network(targets_input, strict=False)
+        is_cidr = True
+    except ValueError:
+        pass
+        
+    if is_cidr:
+        # Check latest completed scan in SQLite for this network block
+        latest = db_service.get_latest_scan(targets_input)
+        if latest and latest.devices:
+            # Gather all active IPs
+            hosts_list = [str(dev.ip) for dev in latest.devices if dev.status == "up"]
+            if not hosts_list:
+                console.print(Panel(
+                    f"[bold yellow]Warning:[/] No active/up hosts found in local database history for subnet [bold cyan]{targets_input}[/].\n"
+                    f"Please run [bold green]netpulse discover {targets_input}[/] first to discover alive hosts.",
+                    title="[bold yellow]No Targets Found[/bold yellow]",
+                    border_style="yellow"
+                ))
+                raise typer.Exit(code=1)
+        else:
+            console.print(Panel(
+                f"[bold red]Error:[/] No historical scans found for subnet [bold cyan]{targets_input}[/] in the local database.\n"
+                f"Please execute [bold green]netpulse discover {targets_input}[/] first to map alive hosts, or specify individual IPs.",
+                title="[bold red]Historical Map Missing[/bold red]",
+                border_style="red"
+            ))
+            raise typer.Exit(code=1)
+    else:
+        # Simple split by commas
+        hosts_list = [h.strip() for h in targets_input.split(",") if h.strip()]
+
+    if not hosts_list:
+        console.print(Panel("[bold red]Error:[/] No target hosts specified.", border_style="red"))
+        raise typer.Exit(code=1)
+
+    # Build SshHostConfig configurations
+    configs = [
+        SshHostConfig(
+            ip=host,
+            port=port,
+            username=username,
+            password=password,
+            enable_password=enable_password,
+            auto_negotiate=auto_negotiate,
+            ignore_host_keys=ignore_host_keys,
+            timeout_seconds=timeout
+        )
+        for host in hosts_list
+    ]
+
+    console.print(f"\n[bold cyan]Preparing to execute SSH command '[magenta]{command}[/]' concurrently across {len(configs)} host(s)...[/bold cyan]\n")
+
+    # Run executing concurrently with a beautiful Rich spinner
+    with console.status("[bold green]Executing concurrent SSH sweeps...[/bold green]", spinner="dots"):
+        try:
+            audit = asyncio.run(ssh_runner.execute_concurrently(configs, command))
+        except Exception as e:
+            console.print(Panel(f"[bold red]Execution Failure:[/] {e}", title="[bold red]System Error[/bold red]", border_style="red"))
+            raise typer.Exit(code=1)
+
+    # Render results table
+    table = Table(
+        title="⚡ NetPulse SSH Multi-Host Execution Summary ⚡",
+        title_style="bold cyan",
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold magenta"
+    )
+    table.add_column("IP Address", style="bold white", justify="left")
+    table.add_column("Status", justify="center")
+    table.add_column("Latency (RTT)", justify="right")
+    table.add_column("Negotiated KEX", justify="left", style="dim")
+    table.add_column("Negotiated Cipher", justify="left", style="dim")
+    table.add_column("Diagnostics / Failure Details", justify="left")
+
+    for res in audit.results:
+        lat = f"{res.latency_ms:.2f} ms" if res.latency_ms is not None else "N/A"
+        
+        if res.status == SshStatus.SUCCESS:
+            status_str = "[bold green]✔ SUCCESS[/bold green]"
+            details = "[dim]Standard handshake[/dim]"
+            if res.negotiated_kex and ("sha1" in res.negotiated_kex or "3des" in res.negotiated_cipher or "cbc" in res.negotiated_cipher):
+                details = "[bold yellow]⚠ Healed Legacy Handshake[/bold yellow]"
+        else:
+            status_str = "[bold red]✘ FAILED[/bold red]"
+            details = f"[red]{res.error_message}[/red]"
+
+        table.add_row(
+            res.ip,
+            status_str,
+            lat,
+            res.negotiated_kex or "N/A",
+            res.negotiated_cipher or "N/A",
+            details
+        )
+
+    console.print(table)
+    console.print(f"\n[bold green]Concurrent executions finished:[/] {audit.success_count} succeeded, {audit.failed_count} failed.\n")
+
+    # Display outputs of successful runs
+    for res in audit.results:
+        if res.status == SshStatus.SUCCESS and res.stdout:
+            output_clean = res.stdout.strip()
+            console.print(Panel(
+                Syntax(output_clean, "text", theme="monokai", background_color="default"),
+                title=f"[bold green]✔ Host Output: {res.ip}[/bold green]",
+                border_style="green",
+                box=box.ROUNDED
+            ))
+            console.print()
+
+@ssh_app.command(name="history", help="Query basic logs for all past concurrent SSH executions.")
+def ssh_history():
+    """
+    Displays the persistent history of all multi-host SSH audits.
+    """
+    history = db_service.get_ssh_history()
+    if not history:
+        console.print("\n[bold yellow]No historic SSH executions found in the local database.[/bold yellow]\n")
+        raise typer.Exit(code=0)
+
+    table = Table(
+        title="⚡ NetPulse SSH Operations Audit History ⚡",
+        title_style="bold cyan",
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold magenta"
+    )
+    table.add_column("Session UUID", style="dim", justify="left")
+    table.add_column("Command Executed", style="bold white", justify="left")
+    table.add_column("Targets Count", justify="center")
+    table.add_column("Succeeded", style="green", justify="center")
+    table.add_column("Failed", style="red", justify="center")
+    table.add_column("Executed At (UTC)", justify="left")
+
+    for audit in history:
+        table.add_row(
+            audit["id"][:8] + "...",
+            audit["command"],
+            str(len(audit["targets"])),
+            str(audit["success_count"]),
+            str(audit["failed_count"]),
+            audit["executed_at"]
+        )
+
+    console.print(table)
+
+
 # Register Typer command groups
 app.add_typer(subnet_app, name="subnet")
+app.add_typer(ssh_app, name="ssh")
 
 if __name__ == "__main__":
     app()

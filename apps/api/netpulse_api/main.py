@@ -26,10 +26,13 @@ from netpulse_core.services.subnet import (
 from netpulse_core.services.db import DatabaseService
 from netpulse_core.services.drift import DriftService
 from netpulse_core.models.drift import DriftResult
+from netpulse_core.models.ssh import SshExecutionAudit, SshHostConfig
+from netpulse_core.services.ssh_runner import SshRunnerService
 
 # Initialize persistent SQLite storage & drift services
 db_service = DatabaseService("netpulse.db")
 drift_service = DriftService()
+ssh_runner = SshRunnerService(db_service)
 
 # Configure structured logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -485,5 +488,69 @@ def compare_historic_scans(req: ScanCompareRequest):
             detail={
                 "error": "ComparisonError",
                 "message": f"Failed to compare scans: {e}"
+            }
+        )
+
+
+# 5. SSH Request Schemas & Endpoints
+
+class SshExecuteHost(BaseModel):
+    ip: str = Field(..., description="Target IP or hostname.")
+    port: int = Field(22, description="SSH port.")
+
+class SshExecuteRequest(BaseModel):
+    hosts: List[SshExecuteHost] = Field(..., description="List of SSH hosts.")
+    command: str = Field(..., description="SSH command to execute.")
+    username: str = Field(..., description="SSH login username.")
+    password: Optional[str] = Field(None, description="SSH login password.")
+    enable_password: Optional[str] = Field(None, description="Cisco enable password.")
+    auto_negotiate: bool = Field(True, description="Enable key-exchange auto-negotiate fallbacks.")
+    ignore_host_keys: bool = Field(True, description="Ignore host verification checks.")
+    timeout_seconds: int = Field(10, description="Connection timeout.")
+
+@app.post("/api/v1/ssh/execute", response_model=SshExecutionAudit, status_code=status.HTTP_200_OK)
+async def execute_ssh_command(req: SshExecuteRequest):
+    """
+    Executes a command concurrently across one or multiple remote SSH hosts.
+    Resolves legacy algorithms and caches results automatically.
+    """
+    try:
+        hosts_config = []
+        for h in req.hosts:
+            hosts_config.append(SshHostConfig(
+                ip=h.ip,
+                port=h.port,
+                username=req.username,
+                password=req.password,
+                enable_password=req.enable_password,
+                auto_negotiate=req.auto_negotiate,
+                ignore_host_keys=req.ignore_host_keys,
+                timeout_seconds=req.timeout_seconds
+            ))
+            
+        audit = await ssh_runner.execute_concurrently(hosts_config, req.command)
+        return audit
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "SshExecutionError",
+                "message": f"Concurrent SSH runner failed: {e}"
+            }
+        )
+
+@app.get("/api/v1/ssh/history", response_model=List[Dict[str, Any]], status_code=status.HTTP_200_OK)
+def get_ssh_execution_history():
+    """
+    Queries basic logs for all historical concurrent SSH runs.
+    """
+    try:
+        return db_service.get_ssh_history()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "HistoryError",
+                "message": f"Failed to retrieve SSH history: {e}"
             }
         )
