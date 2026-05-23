@@ -8,6 +8,8 @@ from netpulse_core.models.device import Device, DeviceStatus
 from netpulse_core.models.discovery import DiscoveryResult, DiscoveryMethod
 from netpulse_engine import scan_arp, scan_icmp
 
+from netpulse_core.services.mac_lookup import MacLookupService
+
 logger = logging.getLogger(__name__)
 
 class DiscoveryService:
@@ -65,6 +67,11 @@ class DiscoveryService:
                 logger.error(f"Error during {method.value} scan: {e}")
                 errors.append(f"{method.value} scan failed: {str(e)}")
 
+        # Fetch local system ARP cache for ICMP sweeps
+        arp_cache = {}
+        if any(m == DiscoveryMethod.ICMP for m in methods):
+            arp_cache = MacLookupService.parse_system_arp_table()
+
         # 4. Process Data into Models
         devices: List[Device] = []
         seen_ips = set()
@@ -75,10 +82,21 @@ class DiscoveryService:
                 continue
                 
             try:
+                # 1. Resolve MAC address if missing (e.g. from ICMP scan on local subnet)
+                mac = raw_device.get("mac")
+                if not mac and ip in arp_cache:
+                    mac = arp_cache[ip]
+
+                # 2. Resolve vendor if MAC is present
+                vendor = None
+                if mac:
+                    vendor = MacLookupService.resolve_vendor(mac)
+
                 # Let Pydantic validate and construct the model
                 device = Device(
                     ip=ip,
-                    mac=raw_device.get("mac"),
+                    mac=mac,
+                    vendor=vendor,
                     rtt_ms=raw_device.get("rtt_ms"),
                     status=raw_device.get("status", DeviceStatus.UNKNOWN)
                 )
