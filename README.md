@@ -1,6 +1,6 @@
 # ⚡ NetPulse
 
-[![Python Version](https://img.shields.io/badge/python-3.14%2B-blue.svg)](https://www.python.org/)
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Rust](https://img.shields.io/badge/rust-native-orange.svg)](https://www.rust-lang.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100.0%2B-green.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
