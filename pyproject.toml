@@ -1,7 +1,11 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
 [project]
 name = "netpulse"
 version = "0.1.0"
-description = "Add your description here"
+description = "High-performance network discovery and subnet analysis suite with native Rust speed."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -13,6 +17,9 @@ dependencies = [
     "asyncssh>=2.14.0",
 ]
 
+[project.scripts]
+netpulse = "netpulse_cli.main:app"
+
 [dependency-groups]
 dev = [
     "maturin>=1.13.1",
@@ -20,3 +27,7 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "httpx>=0.24.0",
 ]
+
+[tool.maturin]
+python-source = "src"
+module-name = "netpulse_rust"

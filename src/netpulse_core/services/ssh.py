@@ -56,7 +56,7 @@ class SmartSshClient:
             # 1. Attempt connection using modern secure algorithms
             try:
                 conn = await asyncssh.connect(**connect_opts)
-            except (asyncssh.misc.NegotiationError, asyncssh.misc.ProtocolError) as e:
+            except (asyncssh.misc.ProtocolError, asyncssh.misc.DisconnectError) as e:
                 # Catch cryptographic key exchange or cipher mismatch errors
                 if config.auto_negotiate:
                     logger.warning(

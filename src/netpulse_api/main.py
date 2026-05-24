@@ -5,11 +5,6 @@ import logging
 from typing import List, Optional, Dict, Any
 from collections import defaultdict
 
-# Dynamically add the packages folder paths so we can import them from anywhere
-base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-sys.path.insert(0, os.path.join(base_dir, "packages/core"))
-sys.path.insert(0, os.path.join(base_dir, "packages/engine"))
-
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator

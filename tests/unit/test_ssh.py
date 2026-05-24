@@ -85,10 +85,11 @@ def test_db_ssh_audit_persistence():
 
 
 @pytest.mark.asyncio
-@patch("asyncssh.connect")
+@patch("asyncssh.connect", new_callable=AsyncMock)
 async def test_ssh_client_success_standard(mock_connect):
     """Verify that SmartSshClient connects and executes successfully under standard handshakes."""
     mock_conn = MagicMock()
+    mock_conn.wait_closed = AsyncMock()
     mock_conn.get_extra_info.side_effect = lambda key: {
         "kex_alg": "curve25519-sha256",
         "cipher_alg": "aes256-gcm@openssh.com"
@@ -98,7 +99,8 @@ async def test_ssh_client_success_standard(mock_connect):
     mock_proc = AsyncMock()
     mock_proc.stdout.read.return_value = "GigabitEthernet0/1 is up, line protocol is up"
     mock_proc.stderr.read.return_value = ""
-    mock_conn.create_process.return_value.__aenter__.return_value = mock_proc
+    mock_conn.create_process.return_value.__aenter__ = AsyncMock(return_value=mock_proc)
+    mock_conn.create_process.return_value.__aexit__ = AsyncMock()
 
     mock_connect.return_value = mock_conn
 
@@ -117,12 +119,13 @@ async def test_ssh_client_success_standard(mock_connect):
 
 
 @pytest.mark.asyncio
-@patch("asyncssh.connect")
+@patch("asyncssh.connect", new_callable=AsyncMock)
 async def test_ssh_client_legacy_handshake_healing(mock_connect):
     """Verify that SmartSshClient retries connection with legacy ciphers if initial handshake fails."""
     # First connect attempt raises NegotiationError
     # Second connect attempt succeeds
     mock_conn = MagicMock()
+    mock_conn.wait_closed = AsyncMock()
     mock_conn.get_extra_info.side_effect = lambda key: {
         "kex_alg": "diffie-hellman-group1-sha1",
         "cipher_alg": "3des-cbc"
@@ -131,10 +134,11 @@ async def test_ssh_client_legacy_handshake_healing(mock_connect):
     mock_proc = AsyncMock()
     mock_proc.stdout.read.return_value = "Legacy Cisco Switch Config..."
     mock_proc.stderr.read.return_value = ""
-    mock_conn.create_process.return_value.__aenter__.return_value = mock_proc
+    mock_conn.create_process.return_value.__aenter__ = AsyncMock(return_value=mock_proc)
+    mock_conn.create_process.return_value.__aexit__ = AsyncMock()
 
     mock_connect.side_effect = [
-        asyncssh.misc.NegotiationError("Key exchange failed: no matching algorithms"),
+        asyncssh.misc.ProtocolError("Key exchange failed: no matching algorithms"),
         mock_conn
     ]
 
@@ -156,10 +160,11 @@ async def test_ssh_client_legacy_handshake_healing(mock_connect):
 
 
 @pytest.mark.asyncio
-@patch("asyncssh.connect")
+@patch("asyncssh.connect", new_callable=AsyncMock)
 async def test_ssh_runner_concurrent_execution(mock_connect):
     """Verify that SshRunnerService executes commands across multiple hosts in parallel and saves results."""
     mock_conn = MagicMock()
+    mock_conn.wait_closed = AsyncMock()
     mock_conn.get_extra_info.side_effect = lambda key: {
         "kex_alg": "curve25519-sha256",
         "cipher_alg": "aes256-gcm@openssh.com"
@@ -168,7 +173,8 @@ async def test_ssh_runner_concurrent_execution(mock_connect):
     mock_proc = AsyncMock()
     mock_proc.stdout.read.return_value = "Command output"
     mock_proc.stderr.read.return_value = ""
-    mock_conn.create_process.return_value.__aenter__.return_value = mock_proc
+    mock_conn.create_process.return_value.__aenter__ = AsyncMock(return_value=mock_proc)
+    mock_conn.create_process.return_value.__aexit__ = AsyncMock()
     mock_connect.return_value = mock_conn
 
     # Multi-host targets

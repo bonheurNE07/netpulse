@@ -4,11 +4,6 @@ import asyncio
 import ipaddress
 from typing import List, Optional
 
-# Dynamically add the packages folder paths so we can import them from anywhere
-base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-sys.path.insert(0, os.path.join(base_dir, "packages/core"))
-sys.path.insert(0, os.path.join(base_dir, "packages/engine"))
-
 import typer
 from rich.console import Console
 from rich.table import Table
