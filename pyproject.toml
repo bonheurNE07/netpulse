@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "netpulse"
-version = "0.1.0"
+version = "0.1.0.1"
 description = "High-performance network discovery and subnet analysis suite with native Rust speed."
 readme = "README.md"
 license = { file = "LICENSE" }
