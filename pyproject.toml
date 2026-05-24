@@ -7,6 +7,7 @@ name = "netpulse"
 version = "0.1.0"
 description = "High-performance network discovery and subnet analysis suite with native Rust speed."
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.14"
 dependencies = [
     "pydantic>=2.0.0",
@@ -31,3 +32,4 @@ dev = [
 [tool.maturin]
 python-source = "src"
 module-name = "netpulse_rust"
+manifest-path = "rust/Cargo.toml"
