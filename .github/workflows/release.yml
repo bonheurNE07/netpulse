@@ -100,6 +100,6 @@ jobs:
           merge-multiple: true
 
       - name: Publish package to PyPI
-        uses: pypa/jwt-publisher-action@main
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
