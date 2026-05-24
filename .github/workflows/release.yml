@@ -39,6 +39,14 @@ jobs:
         with:
           python-version: '3.14'
 
+      - name: Install Npcap SDK (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Invoke-WebRequest -Uri https://npcap.com/dist/npcap-sdk-1.13.zip -OutFile npcap-sdk.zip
+          Expand-Archive -Path npcap-sdk.zip -DestinationPath npcap-sdk
+          echo "LIB=$env:GITHUB_WORKSPACE\npcap-sdk\Lib\x64" >> $env:GITHUB_ENV
+        shell: pwsh
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
