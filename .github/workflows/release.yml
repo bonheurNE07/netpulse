@@ -18,18 +18,19 @@ jobs:
           # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            rust_target: x86_64-unknown-linux-gnu
           # Linux aarch64 (ARM)
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-          # macOS x86_64 (Intel)
-          - os: macos-13
-            target: x86_64-apple-darwin
-          # macOS aarch64 (Apple Silicon M1/M2/M3)
+            rust_target: aarch64-unknown-linux-gnu
+          # macOS Universal (Intel + Apple Silicon)
           - os: macos-14
-            target: aarch64-apple-darwin
+            target: universal2-apple-darwin
+            rust_target: x86_64-apple-darwin, aarch64-apple-darwin
           # Windows x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            rust_target: x86_64-pc-windows-msvc
 
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +51,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.rust_target }}
 
       - name: Build Wheels
         uses: PyO3/maturin-action@v1
