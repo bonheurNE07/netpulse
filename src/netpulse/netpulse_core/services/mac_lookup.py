@@ -1,4 +1,7 @@
 import os
+import sys
+import subprocess
+import re
 import sqlite3
 import urllib.request
 import urllib.error
@@ -148,13 +151,40 @@ class MacLookupService:
     @classmethod
     def parse_system_arp_table(cls, arp_path: str = "/proc/net/arp") -> Dict[str, str]:
         """
-        Parses the Linux system ARP cache file (/proc/net/arp) to map active IPs to MAC addresses.
+        Parses the system ARP cache to map active IPs to MAC addresses.
+        Supports Linux (by parsing /proc/net/arp) and Windows (by parsing 'arp -a').
         
         Returns:
             A dictionary mapping IP address strings to normalized colon-delimited MAC address strings.
         """
         arp_map: Dict[str, str] = {}
         
+        # 1. Windows support via 'arp -a' command execution
+        if sys.platform.startswith("win32"):
+            try:
+                # Run arp -a securely. creationflags=0x08000000 (CREATE_NO_WINDOW) avoids console flashing on GUI apps.
+                output = subprocess.check_output(
+                    ["arp", "-a"], 
+                    creationflags=0x08000000
+                ).decode("utf-8", errors="ignore")
+                
+                for line in output.splitlines():
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        ip = parts[0]
+                        mac = parts[1].strip()
+                        # Verify IP and MAC match standard formats
+                        if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", ip) and \
+                           re.match(r"^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$", mac):
+                            # Normalize hyphen-delimited physical addresses to colon-delimited format
+                            normalized_mac = mac.replace("-", ":").lower()
+                            if normalized_mac != "00:00:00:00:00:00":
+                                arp_map[ip] = normalized_mac
+            except Exception:
+                pass
+            return arp_map
+
+        # 2. Linux support via /proc/net/arp parsing
         if not os.path.exists(arp_path):
             return arp_map
 

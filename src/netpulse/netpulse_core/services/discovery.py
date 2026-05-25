@@ -9,6 +9,7 @@ from netpulse_core.models.discovery import DiscoveryResult, DiscoveryMethod
 from netpulse_engine import scan_arp, scan_icmp
 
 from netpulse_core.services.mac_lookup import MacLookupService
+from netpulse_core.services.port_scanner import PortScannerService
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,8 @@ class DiscoveryService:
         target_network: str, 
         methods: Optional[List[DiscoveryMethod]] = None,
         timeout_ms: int = 1000,
-        interface: Optional[str] = None
+        interface: Optional[str] = None,
+        ports: Optional[List[int]] = None
     ) -> DiscoveryResult:
         """
         Executes a network discovery scan across the target network.
@@ -33,6 +35,7 @@ class DiscoveryService:
             methods: List of discovery methods to use. Defaults to [DiscoveryMethod.ARP]
             timeout_ms: Timeout in milliseconds for the scan
             interface: Network interface to scan on
+            ports: Optional list of TCP ports to scan on active hosts
             
         Returns:
             DiscoveryResult containing the scan metadata and discovered devices
@@ -106,6 +109,30 @@ class DiscoveryService:
                 logger.warning(f"Failed to parse device data {raw_device}: {e}")
                 errors.append(f"Failed to parse device {ip}: {str(e)}")
                 
+        # 4.5 Execute Asynchronous TCP Port Scan on Discovered 'UP' Hosts
+        if ports and devices:
+            active_devices = [d for d in devices if d.status == DeviceStatus.UP]
+            if active_devices:
+                active_ips = [str(d.ip) for d in active_devices]
+                try:
+                    scanner = PortScannerService()
+                    # Keep the port timeout snappy (max 500ms) to ensure NetPulse remains extremely fast
+                    port_scan_timeout = min(timeout_ms, 500)
+                    scan_results = await scanner.scan_multiple_devices_ports(
+                        ips=active_ips,
+                        ports=ports,
+                        timeout_ms=port_scan_timeout
+                    )
+                    
+                    # Map discovered open ports back to device metadata
+                    for device in active_devices:
+                        ip_str = str(device.ip)
+                        if ip_str in scan_results:
+                            device.metadata["open_ports"] = scan_results[ip_str]
+                except Exception as pe:
+                    logger.error(f"Error during port scanning execution: {pe}")
+                    errors.append(f"Port scan failed: {str(pe)}")
+
         finished_at = datetime.now(timezone.utc)
         
         # Determine overall status

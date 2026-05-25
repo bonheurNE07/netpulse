@@ -104,3 +104,28 @@ def test_parse_system_arp_table_missing_file():
     """Verify that parse_system_arp_table returns an empty dict if the file is missing (e.g. non-Linux)."""
     mappings = MacLookupService.parse_system_arp_table("/nonexistent/file/path")
     assert mappings == {}
+
+
+@patch("sys.platform", "win32")
+@patch("subprocess.check_output")
+def test_parse_system_arp_table_windows(mock_check_output):
+    """Verify that parse_system_arp_table parses Windows 'arp -a' output correctly."""
+    mock_arp_output = b"""
+Interface: 192.168.1.68 --- 0x14
+  Internet Address      Physical Address      Type
+  192.168.1.1           44-a3-c7-38-f2-62     dynamic
+  192.168.1.64          c2-dc-ae-aa-ef-c0     dynamic
+  192.168.1.254         44-a3-c7-38-f2-62     dynamic
+  224.0.0.22            01-00-5e-00-00-16     static
+"""
+    mock_check_output.return_value = mock_arp_output
+
+    mappings = MacLookupService.parse_system_arp_table()
+    assert len(mappings) == 4
+    assert mappings["192.168.1.1"] == "44:a3:c7:38:f2:62"
+    assert mappings["192.168.1.64"] == "c2:dc:ae:aa:ef:c0"
+    assert mappings["192.168.1.254"] == "44:a3:c7:38:f2:62"
+    # Broadcast / Multicast / non-dynamic matching check: 
+    # Actually, FF-FF-FF-FF-FF-FF or static matches if it satisfies the hex pattern, 
+    # but the static multicast IPs are usually ignored or parsed if they have a valid MAC format.
+    # Our regex allows static MACs if they are formatted properly, which is perfectly fine.

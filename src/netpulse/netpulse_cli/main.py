@@ -71,6 +71,12 @@ def discover(
         "-f",
         help="Output format to display results: table or json.",
     ),
+    ports: Optional[str] = typer.Option(
+        None,
+        "--ports",
+        "-p",
+        help="TCP port(s) to scan on active hosts (e.g. '22,80,443' or 'common' for standard presets).",
+    ),
 ):
     """
     Executes a high-performance network discovery scan using raw sockets in Rust.
@@ -94,6 +100,38 @@ def discover(
                 ))
                 raise typer.Exit(code=1)
             parsed_methods.append(valid_methods[m_lower])
+
+    # 1.5. Parse and validate port scanning options
+    parsed_ports = None
+    if ports:
+        if ports.lower() == "common":
+            # Preset common ports list (Top 20 most scanned ports)
+            parsed_ports = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1433, 3306, 3389, 5900, 8080, 8443]
+        else:
+            try:
+                parsed_ports = []
+                for p in ports.split(","):
+                    p_stripped = p.strip()
+                    if p_stripped:
+                        port_val = int(p_stripped)
+                        if 1 <= port_val <= 65535:
+                            parsed_ports.append(port_val)
+                        else:
+                            raise ValueError(f"Port '{port_val}' is outside valid TCP range (1-65535).")
+                if not parsed_ports:
+                    raise ValueError("No ports found in specified list.")
+            except ValueError as ve:
+                console.print(Panel(
+                    f"[bold red]Error:[/] Invalid port scanning arguments.\n"
+                    f"[yellow]Details:[/] {ve}\n\n"
+                    f"[bold green]Examples of valid inputs:[/]\n"
+                    f"  • [bold white]-p 22,80,443[/]\n"
+                    f"  • [bold white]--ports common[/] (to scan top 20 standard ports)",
+                    title="[bold red]Port Validation Error[/bold red]",
+                    border_style="red",
+                    box=box.ROUNDED,
+                ))
+                raise typer.Exit(code=1)
 
     # 2. Validate CIDR format before proceeding
     try:
@@ -119,7 +157,8 @@ def discover(
                 target_network=target,
                 methods=parsed_methods,
                 timeout_ms=timeout,
-                interface=interface
+                interface=interface,
+                ports=parsed_ports
             ))
         except Exception as e:
             console.print(Panel(
@@ -209,6 +248,10 @@ def discover(
         table.add_column("RTT (Latency)", style="yellow", justify="right")
         table.add_column("Status", justify="center")
         table.add_column("Vendor", style="green", justify="left")
+        
+        # Include Open Ports column if port scanning was executed
+        if parsed_ports:
+            table.add_column("Open Ports (Services)", style="yellow", justify="left")
 
         # Sort hosts numerically by IP address
         try:
@@ -222,13 +265,23 @@ def discover(
             status_str = "[bold green]● up[/bold green]" if device.status == DeviceStatus.UP else "[bold red]● down[/bold red]"
             vendor_str = device.vendor if device.vendor else "[dim green]-[/]"
 
-            table.add_row(
+            row_data = [
                 str(device.ip),
                 mac_str,
                 rtt_str,
                 status_str,
                 vendor_str
-            )
+            ]
+            
+            if parsed_ports:
+                open_ports = device.metadata.get("open_ports", [])
+                if open_ports:
+                    ports_str = ", ".join(f"[bold green]{p['port']}[/]({p['service'].lower()})" for p in open_ports)
+                else:
+                    ports_str = "[dim white]none[/]"
+                row_data.append(ports_str)
+
+            table.add_row(*row_data)
 
         console.print(table)
     else:
