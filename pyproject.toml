@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "netpulse"
-version = "0.1.0.1"
+version = "0.1.0.2"
 description = "High-performance network discovery and subnet analysis suite with native Rust speed."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-netpulse = "netpulse_cli.main:app"
+netpulse = "netpulse.netpulse_cli.main:app"
 
 [dependency-groups]
 dev = [
@@ -31,5 +31,5 @@ dev = [
 
 [tool.maturin]
 python-source = "src"
-module-name = "netpulse_rust"
+module-name = "netpulse.netpulse_rust"
 manifest-path = "rust/Cargo.toml"
