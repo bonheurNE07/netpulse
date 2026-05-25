@@ -313,7 +313,7 @@ def discover(
 @app.command(name="version", help="Show NetPulse version information.")
 def version():
     """Prints the CLI and package version details."""
-    console.print("[bold magenta]NetPulse CLI[/bold magenta] version [bold cyan]0.1.0[/bold cyan]")
+    console.print("[bold magenta]NetPulse CLI[/bold magenta] version [bold cyan]0.1.0.4[/bold cyan]")
 
 # -------------------------------------------------------------
 # Subnetting & VLSM Commands

@@ -36,7 +36,7 @@ logger = logging.getLogger("netpulse_api")
 app = FastAPI(
     title="NetPulse REST API",
     description="High-performance network discovery and analysis REST service powered by Rust.",
-    version="0.1.0",
+    version="0.1.0.4",
     docs_url="/docs",
     redoc_url="/redoc"
 )
