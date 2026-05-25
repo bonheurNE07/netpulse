@@ -62,22 +62,42 @@ fn scan_arp(
             PyOSError::new_err(format!("Specified network interface '{}' not found.", name))
         })?
     } else {
-        // Auto-detect: find interface containing IP in the target network, that is up and not loopback
-        interfaces
-            .into_iter()
-            .find(|i| {
-                i.is_up()
-                    && !i.is_loopback()
-                    && i.ips.iter().any(|ip| {
-                        match ip.ip() {
-                            IpAddr::V4(ipv4) => ipv4_net.contains(&ipv4),
-                            _ => false,
-                        }
-                    })
-            })
-            .ok_or_else(|| {
-                PyOSError::new_err("Could not automatically determine network interface for target. Please specify one explicitly.")
-            })?
+        // Auto-detect: 
+        // 1. Try strict check: find interface containing IP in target network, that is up and not loopback
+        // 2. Fallback check: find interface containing IP in target network, regardless of is_up/loopback flags (required on Windows where flags can be unreliable)
+        let mut selected = None;
+        
+        // Try strict check first
+        for i in &interfaces {
+            if i.is_up() && !i.is_loopback() && i.ips.iter().any(|ip| {
+                match ip.ip() {
+                    IpAddr::V4(ipv4) => ipv4_net.contains(&ipv4),
+                    _ => false,
+                }
+            }) {
+                selected = Some(i.clone());
+                break;
+            }
+        }
+        
+        // Fallback check if nothing matched strict
+        if selected.is_none() {
+            for i in &interfaces {
+                if i.ips.iter().any(|ip| {
+                    match ip.ip() {
+                        IpAddr::V4(ipv4) => ipv4_net.contains(&ipv4),
+                        _ => false,
+                    }
+                }) {
+                    selected = Some(i.clone());
+                    break;
+                }
+            }
+        }
+        
+        selected.ok_or_else(|| {
+            PyOSError::new_err("Could not automatically determine network interface for target. Please specify one explicitly.")
+        })?
     };
 
     let source_mac = selected_interface.mac.ok_or_else(|| {
