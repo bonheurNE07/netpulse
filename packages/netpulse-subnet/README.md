@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="NetPulse Subnet Logo" width="250"/>
+  <img src="packages/netpulse-subnet/docs/assets/logo-removebg-preview.png" alt="NetPulse Subnet Logo" width="250"/>
 </p>
 
 <h1 align="center">NetPulse Subnet</h1>
