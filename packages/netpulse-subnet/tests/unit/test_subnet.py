@@ -1,12 +1,12 @@
 import pytest
 from pydantic import ValidationError
-from netpulse_core.services.subnet import (
+from netpulse.subnet.services.subnet import (
     calculate_subnet_info,
     split_fixed_length,
     allocate_vlsm,
     find_containing_subnet
 )
-from netpulse_core.models.subnet import SubnetInfo, VLSMResult
+from netpulse.subnet.models.subnet import SubnetInfo, VLSMResult
 
 
 def test_calculate_subnet_info_ipv4_standard():

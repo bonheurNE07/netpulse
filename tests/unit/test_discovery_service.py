@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch
-from netpulse_core.services.discovery import DiscoveryService
-from netpulse_core.models.discovery import DiscoveryMethod, DiscoveryResult
+from netpulse.core.services.discovery import DiscoveryService
+from netpulse.core.models.discovery import DiscoveryMethod, DiscoveryResult
 
 
 @pytest.mark.asyncio
@@ -23,7 +23,7 @@ async def test_discover_network_arp_success():
         {"ip": "192.168.1.5", "mac": "00:11:22:33:44:55", "rtt_ms": 1.5, "status": "up"}
     ]
     
-    with patch("netpulse_core.services.discovery.scan_arp") as mock_scan_arp:
+    with patch("netpulse.core.services.discovery.scan_arp") as mock_scan_arp:
         mock_scan_arp.return_value = mock_arp_results
         
         result = await service.discover_network("192.168.1.0/24", methods=[DiscoveryMethod.ARP])
@@ -48,7 +48,7 @@ async def test_discover_network_icmp_success():
         {"ip": "192.168.1.10", "mac": None, "rtt_ms": 2.3, "status": "up"}
     ]
     
-    with patch("netpulse_core.services.discovery.scan_icmp") as mock_scan_icmp:
+    with patch("netpulse.core.services.discovery.scan_icmp") as mock_scan_icmp:
         mock_scan_icmp.return_value = mock_icmp_results
         
         result = await service.discover_network("192.168.1.0/24", methods=[DiscoveryMethod.ICMP])
@@ -76,8 +76,8 @@ async def test_discover_network_icmp_with_arp_cache_resolution():
         "192.168.1.15": "00:11:22:33:44:55"
     }
     
-    with patch("netpulse_core.services.discovery.scan_icmp") as mock_scan_icmp, \
-         patch("netpulse_core.services.mac_lookup.MacLookupService.parse_system_arp_table") as mock_arp:
+    with patch("netpulse.core.services.discovery.scan_icmp") as mock_scan_icmp, \
+         patch("netpulse.core.services.mac_lookup.MacLookupService.parse_system_arp_table") as mock_arp:
          
         mock_scan_icmp.return_value = mock_icmp_results
         mock_arp.return_value = mock_arp_mappings
@@ -105,8 +105,8 @@ async def test_discover_network_partial_failures():
         {"ip": "192.168.1.5", "mac": "00:11:22:33:44:55", "rtt_ms": 1.5, "status": "up"}
     ]
     
-    with patch("netpulse_core.services.discovery.scan_arp") as mock_scan_arp, \
-         patch("netpulse_core.services.discovery.scan_icmp") as mock_scan_icmp:
+    with patch("netpulse.core.services.discovery.scan_arp") as mock_scan_arp, \
+         patch("netpulse.core.services.discovery.scan_icmp") as mock_scan_icmp:
          
         mock_scan_arp.return_value = mock_arp_results
         mock_scan_icmp.side_effect = Exception("ICMP raw socket permission denied")

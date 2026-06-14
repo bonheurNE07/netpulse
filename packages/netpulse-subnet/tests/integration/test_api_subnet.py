@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from netpulse_api.main import app
+from netpulse.subnet.api import app
 
 
 def test_api_subnet_info_success():

@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 from typer.testing import CliRunner
 
 from netpulse_cli.main import app, db_service
-from netpulse_core.models.device import Device, DeviceStatus
-from netpulse_core.models.discovery import DiscoveryResult, DiscoveryMethod
+from netpulse.core.models.device import Device, DeviceStatus
+from netpulse.core.models.discovery import DiscoveryResult, DiscoveryMethod
 
 runner = CliRunner()
 

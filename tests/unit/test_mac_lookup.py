@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 import urllib.error
 
-from netpulse_core.services.mac_lookup import (
+from netpulse.core.services.mac_lookup import (
     MacLookupService,
     normalize_mac,
     COMMON_OUIS

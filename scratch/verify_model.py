@@ -7,8 +7,8 @@ from datetime import datetime, timezone, timedelta
 sys.path.append(os.path.join(os.getcwd(), "packages/core"))
 
 try:
-    from netpulse_core.models.device import Device, DeviceStatus
-    from netpulse_core.models.discovery import DiscoveryResult, DiscoveryMethod
+    from netpulse.core.models.device import Device, DeviceStatus
+    from netpulse.core.models.discovery import DiscoveryResult, DiscoveryMethod
 except ImportError as e:
     print(f"Error: {e}")
     print("Please install pydantic: pip install pydantic")

@@ -4,12 +4,12 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from netpulse_core.models.device import Device, DeviceStatus
-from netpulse_core.models.discovery import DiscoveryResult, DiscoveryMethod
-from netpulse_engine import scan_arp, scan_icmp
+from netpulse.core.models.device import Device, DeviceStatus
+from netpulse.core.models.discovery import DiscoveryResult, DiscoveryMethod
+from netpulse.core.engine import scan_arp, scan_icmp
 
-from netpulse_core.services.mac_lookup import MacLookupService
-from netpulse_core.services.port_scanner import PortScannerService
+from netpulse.core.services.mac_lookup import MacLookupService
+from netpulse.core.services.port_scanner import PortScannerService
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@ import ipaddress
 import math
 from typing import List, Dict, Optional, Any
 
-from netpulse_core.models.subnet import (
+from netpulse.subnet.models.subnet import (
     SubnetInfo,
     VLSMRequirement,
     VLSMAllocation,

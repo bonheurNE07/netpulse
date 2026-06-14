@@ -2,9 +2,9 @@ import pytest
 import uuid
 from datetime import datetime, timezone
 
-from netpulse_core.models.device import Device, DeviceStatus
-from netpulse_core.models.discovery import DiscoveryResult, DiscoveryMethod
-from netpulse_core.services.db import DatabaseService
+from netpulse.core.models.device import Device, DeviceStatus
+from netpulse.core.models.discovery import DiscoveryResult, DiscoveryMethod
+from netpulse.core.services.db import DatabaseService
 
 
 @pytest.fixture

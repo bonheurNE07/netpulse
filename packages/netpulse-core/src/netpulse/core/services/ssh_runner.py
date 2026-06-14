@@ -1,9 +1,9 @@
 import asyncio
 from datetime import datetime, timezone
 from typing import List, Optional
-from netpulse_core.models.ssh import SshHostConfig, SshHostResult, SshExecutionAudit, SshStatus
-from netpulse_core.services.ssh import SmartSshClient
-from netpulse_core.services.db import DatabaseService
+from netpulse.core.models.ssh import SshHostConfig, SshHostResult, SshExecutionAudit, SshStatus
+from netpulse.core.services.ssh import SmartSshClient
+from netpulse.core.services.db import DatabaseService
 
 class SshRunnerService:
     """

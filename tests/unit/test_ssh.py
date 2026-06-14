@@ -6,10 +6,10 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime, timezone
 import asyncssh
 
-from netpulse_core.models.ssh import SshHostConfig, SshHostResult, SshExecutionAudit, SshStatus
-from netpulse_core.services.ssh import SmartSshClient
-from netpulse_core.services.ssh_runner import SshRunnerService
-from netpulse_core.services.db import DatabaseService
+from netpulse.core.models.ssh import SshHostConfig, SshHostResult, SshExecutionAudit, SshStatus
+from netpulse.core.services.ssh import SmartSshClient
+from netpulse.core.services.ssh_runner import SshRunnerService
+from netpulse.core.services.db import DatabaseService
 
 def test_ssh_models_instantiation():
     """Verify that SSH models validate inputs and set correct defaults."""

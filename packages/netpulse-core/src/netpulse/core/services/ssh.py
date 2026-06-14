@@ -3,7 +3,7 @@ import time
 import logging
 import asyncssh
 from typing import Optional, Tuple
-from netpulse_core.models.ssh import SshHostConfig, SshHostResult, SshStatus
+from netpulse.core.models.ssh import SshHostConfig, SshHostResult, SshStatus
 
 logger = logging.getLogger(__name__)
 
