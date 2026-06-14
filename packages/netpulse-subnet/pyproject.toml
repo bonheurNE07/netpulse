@@ -4,8 +4,9 @@ build-backend = "hatchling.build"
 
 [project]
 name = "netpulse-subnet"
-version = "0.1.0"
+version = "0.1.1"
 description = "Subnetting and network discovery tool"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "netpulse-core",
