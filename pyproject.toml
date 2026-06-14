@@ -15,6 +15,7 @@ requires-python = ">=3.10"
 dependencies = [
     "netpulse-core",
     "netpulse-subnet",
+    "netpulse-ssh",
 ]
 
 [project.scripts]
@@ -32,6 +33,7 @@ dev = [
 [tool.uv.sources]
 netpulse-core = { workspace = true }
 netpulse-subnet = { workspace = true }
+netpulse-ssh = { workspace = true }
 
 
 [tool.hatch.build.targets.wheel]

@@ -6,10 +6,8 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime, timezone
 import asyncssh
 
-from netpulse.core.models.ssh import SshHostConfig, SshHostResult, SshExecutionAudit, SshStatus
-from netpulse.core.services.ssh import SmartSshClient
-from netpulse.core.services.ssh_runner import SshRunnerService
-from netpulse.core.services.db import DatabaseService
+from netpulse.ssh.models import SshHostConfig, SshHostResult, SshExecutionAudit, SshStatus
+from netpulse.ssh.runner import SmartSshClient, SshRunnerService
 
 def test_ssh_models_instantiation():
     """Verify that SSH models validate inputs and set correct defaults."""
@@ -41,47 +39,6 @@ def test_ssh_models_instantiation():
     assert result.latency_ms == 45.2
     assert result.negotiated_kex == "diffie-hellman-group14-sha1"
     assert result.negotiated_cipher == "aes128-cbc"
-
-
-def test_db_ssh_audit_persistence():
-    """Verify that SshExecutionAudit models are successfully persisted and retrieved in SQLite."""
-    db = DatabaseService(":memory:")
-    
-    result = SshHostResult(
-        ip="192.168.1.5",
-        status=SshStatus.SUCCESS,
-        stdout="Cisco IOS Software...",
-        latency_ms=12.5,
-        negotiated_kex="diffie-hellman-group1-sha1",
-        negotiated_cipher="3des-cbc"
-    )
-    
-    audit = SshExecutionAudit(
-        command="show version",
-        targets=["192.168.1.5"],
-        success_count=1,
-        failed_count=0,
-        results=[result],
-        executed_at=datetime.now(timezone.utc)
-    )
-
-    # Persist the run
-    db.save_ssh_audit(audit)
-
-    # Retrieve history
-    history = db.get_ssh_history()
-    assert len(history) == 1
-    record = history[0]
-    assert record["command"] == "show version"
-    assert record["targets"] == ["192.168.1.5"]
-    assert record["success_count"] == 1
-    assert record["failed_count"] == 0
-    assert len(record["results"]) == 1
-    assert record["results"][0]["ip"] == "192.168.1.5"
-    assert record["results"][0]["status"] == "success"
-    assert record["results"][0]["stdout"] == "Cisco IOS Software..."
-    assert record["results"][0]["negotiated_kex"] == "diffie-hellman-group1-sha1"
-    assert record["results"][0]["negotiated_cipher"] == "3des-cbc"
 
 
 @pytest.mark.asyncio
@@ -183,8 +140,7 @@ async def test_ssh_runner_concurrent_execution(mock_connect):
         SshHostConfig(ip="10.0.0.2", username="cisco", password="pwd")
     ]
     
-    db = DatabaseService(":memory:")
-    runner = SshRunnerService(db)
+    runner = SshRunnerService()
     
     audit = await runner.execute_concurrently(hosts, "show clock")
     
@@ -194,8 +150,3 @@ async def test_ssh_runner_concurrent_execution(mock_connect):
     assert len(audit.results) == 2
     assert audit.results[0].stdout == "Command output"
     assert audit.results[1].stdout == "Command output"
-    
-    # Assert persisted in history
-    history = db.get_ssh_history()
-    assert len(history) == 1
-    assert history[0]["success_count"] == 2

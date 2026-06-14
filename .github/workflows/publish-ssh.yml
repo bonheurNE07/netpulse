@@ -1,0 +1,41 @@
+name: Publish netpulse-ssh to PyPI
+
+on:
+  push:
+    tags:
+      # This workflow will only run when you push a tag like "netpulse-ssh-v0.1.0"
+      - 'netpulse-ssh-v*'
+
+jobs:
+  build-and-publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run Tests
+        run: uv run pytest packages/netpulse-ssh/tests/
+
+      - name: Build netpulse-ssh package
+        run: uv build packages/netpulse-ssh
+
+      - name: Publish to PyPI
+        run: uv publish
+        env:
+          # Ensure you have set PYPI_TOKEN in your GitHub Repository Secrets
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}

@@ -7,8 +7,11 @@ from datetime import datetime, timezone
 
 from netpulse.core.models.device import Device, DeviceStatus
 from netpulse.core.models.discovery import DiscoveryResult, DiscoveryMethod
-from netpulse.core.models.ssh import SshExecutionAudit
 
+try:
+    from netpulse.ssh.models import SshExecutionAudit
+except ImportError:
+    SshExecutionAudit = Any
 
 class DatabaseService:
     """

@@ -8,9 +8,9 @@ version = "0.1.0"
 description = "Core utilities for the Netpulse ecosystem"
 requires-python = ">=3.10"
 dependencies = [
-    "pydantic>=2.0.0",
     "netpulse-rust",
-    "asyncssh>=2.14.0",
+    "pydantic>=2.0.0",
+    "fastapi>=0.100.0",
 ]
 
 
