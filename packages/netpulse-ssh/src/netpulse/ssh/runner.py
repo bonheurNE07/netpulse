@@ -112,6 +112,16 @@ class SmartSshClient:
                 timeout=timeout
             )
 
+            # Clean interactive stdout to remove MOTD, command echoes, and exit sequence
+            if stdout_str:
+                if "terminal length 0" in stdout_str:
+                    stdout_str = stdout_str.split("terminal length 0")[-1]
+                if command in stdout_str:
+                    stdout_str = stdout_str.split(command, 1)[-1]
+                if "exit" in stdout_str:
+                    stdout_str = stdout_str.rsplit("exit", 1)[0]
+                stdout_str = stdout_str.strip()
+
             latency_ms = (time.perf_counter() - start_time) * 1000.0
 
             return SshHostResult(
@@ -136,6 +146,58 @@ class SmartSshClient:
                 latency_ms=round(latency_ms, 2),
                 error_message=error_msg
             )
+        finally:
+            if conn:
+                conn.close()
+                await conn.wait_closed()
+
+    @classmethod
+    async def connect_and_shell(cls, config: SshHostConfig) -> None:
+        """
+        Resiliently connects to a host via SSH and delegates local terminal
+        standard IO to a remote interactive PTY session.
+        """
+        ip = config.ip
+        port = config.port
+        username = config.username
+        password = config.password
+        timeout = config.timeout_seconds
+        
+        connect_opts = {
+            "host": ip,
+            "port": port,
+            "username": username,
+            "password": password,
+            "login_timeout": timeout,
+        }
+
+        if config.ignore_host_keys:
+            connect_opts["client_factory"] = TrustingSSHClient
+            connect_opts["known_hosts"] = None
+
+        conn = None
+        try:
+            try:
+                conn = await asyncssh.connect(**connect_opts)
+            except (asyncssh.misc.ProtocolError, asyncssh.misc.DisconnectError) as e:
+                if config.auto_negotiate:
+                    logger.warning(f"Handshake failed with {ip}:{port} ({e}). Retrying with legacy cryptographic support...")
+                    legacy_opts = {
+                        **connect_opts,
+                        "kex_algs": ["diffie-hellman-group1-sha1", "diffie-hellman-group14-sha1", "diffie-hellman-group-exchange-sha1", "diffie-hellman-group-exchange-sha256", "ecdh-sha2-nistp256", "ecdh-sha2-nistp384", "ecdh-sha2-nistp521"],
+                        "encryption_algs": ["aes128-cbc", "aes192-cbc", "aes256-cbc", "3des-cbc", "aes128-ctr", "aes192-ctr", "aes256-ctr"],
+                        "signature_algs": ["ssh-rsa", "ssh-dss", "ecdsa-sha2-nistp256", "ssh-ed25519"],
+                    }
+                    conn = await asyncssh.connect(**legacy_opts)
+                else:
+                    raise e
+            
+            import sys
+            async with conn.create_process(term_type='vt100', stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr) as process:
+                await process.wait()
+                
+        except Exception as e:
+            logger.error(f"Interactive Shell Error on {ip}: {e}")
         finally:
             if conn:
                 conn.close()
@@ -232,3 +294,10 @@ class SshRunnerService:
         )
 
         return audit
+
+    async def interactive_shell(self, config: SshHostConfig) -> None:
+        """
+        Opens a fully interactive SSH shell (PTY) to the target host, connecting
+        standard input and output natively.
+        """
+        await SmartSshClient.connect_and_shell(config)

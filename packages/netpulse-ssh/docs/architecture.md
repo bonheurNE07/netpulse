@@ -16,3 +16,4 @@ The `netpulse-ssh` package is architected to perform massively concurrent, non-b
    - Leverages `asyncssh` to connect to devices.
    - Automatically detects strict OpenSSH cipher drops and falls back dynamically to legacy algorithms (e.g., `diffie-hellman-group1-sha1`, `3des-cbc`) which are frequently required for older Cisco or Juniper gear.
    - Automatically injects configuration prerequisites, specifically sending `terminal length 0` to disable pagination before executing the desired command.
+   - For single-target manual operations, maps standard input and output to `asyncssh` to drop the user directly into an interactive PTY session.

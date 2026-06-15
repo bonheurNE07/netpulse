@@ -64,5 +64,31 @@ def execute(
 
     asyncio.run(run())
 
+@app.command("shell")
+def shell(
+    host: str = typer.Argument(..., help="Target host IP address."),
+    username: str = typer.Option(..., "--user", "-u", help="SSH Username.", prompt=True),
+    password: str = typer.Option("", "--pass", "-p", help="SSH Password.", hide_input=True, prompt="Password (leave empty if using keys)"),
+    port: int = typer.Option(22, "--port", help="SSH port."),
+):
+    """
+    Open an interactive SSH shell session with a single target host.
+    """
+    config = SshHostConfig(
+        ip=host,
+        port=port,
+        username=username,
+        password=password if password else None,
+    )
+
+    async def run_shell():
+        runner = SshRunnerService()
+        with console.status(f"[bold cyan]Connecting to {host}...", spinner="dots"):
+            # The actual shell will take over standard IO, so we exit the status context quickly
+            pass
+        await runner.interactive_shell(config)
+
+    asyncio.run(run_shell())
+
 if __name__ == "__main__":
     app()

@@ -9,8 +9,13 @@ To execute a command across multiple devices concurrently:
 netpulse-ssh execute 192.168.1.5 10.0.0.1 -c "show ip interface brief" -u admin -p password
 ```
 
+To drop into a live interactive SSH shell to manually configure a specific target:
+```bash
+netpulse-ssh shell 192.168.1.5 -u admin -p password
+```
+
 Options:
-- `-c, --command`: The SSH command to execute.
+- `-c, --command`: The SSH command to execute (for `execute`).
 - `-u, --user`: The SSH login username.
 - `-p, --pass`: The SSH password.
 - `-e, --enable`: A privilege execution mode password (e.g., Cisco `enable`).

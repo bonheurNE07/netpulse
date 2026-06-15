@@ -39,11 +39,20 @@ pip install netpulse-ssh
 
 ### CLI Usage
 
+**Concurrent Execution**
 Execute a command across multiple devices concurrently and get a beautiful, structured table summary:
 
 ```bash
 netpulse-ssh execute 192.168.1.5 10.0.0.1 -c "show ip interface brief" -u admin -p password
 ```
+
+**Interactive Shell**
+Drop directly into a live interactive SSH shell to manually configure a specific target:
+
+```bash
+netpulse-ssh shell 192.168.1.5 -u admin -p password
+```
+*(If you omit `-u` or `-p`, the CLI will securely prompt you for them!)*
 
 ### Python API Integration
 
