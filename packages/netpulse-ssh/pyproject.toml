@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "netpulse-ssh"
-version = "0.1.1"
+version = "0.1.2"
 description = "High-speed concurrent SSH command runner"
 readme = "README.md"
 requires-python = ">=3.10"
