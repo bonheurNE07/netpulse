@@ -5,6 +5,10 @@
 </p>
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/bonheurNE07/netpulse/main/packages/netpulse-ssh/docs/assets/netpulse_ssh_logo.png" alt="NetPulse SSH Logo" width="250"/>
+</p>
+
+<p align="center">
   <a href="https://pypi.org/project/netpulse-ssh/"><img src="https://img.shields.io/pypi/v/netpulse-ssh?color=magenta&label=pypi%20package" alt="PyPI version"></a>
   <a href="https://pypi.org/project/netpulse-ssh/"><img src="https://img.shields.io/pypi/pyversions/netpulse-ssh" alt="Python Versions"></a>
   <a href="https://github.com/bonheurNE07/netpulse/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
