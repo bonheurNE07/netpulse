@@ -8,8 +8,13 @@ from rich import print as rprint
 from netpulse.ssh.models import SshHostConfig, SshStatus
 from netpulse.ssh.runner import SshRunnerService
 
-app = typer.Typer(help="NetPulse SSH: High-speed concurrent command runner.")
+app = typer.Typer(help="NetPulse SSH: High-speed concurrent command runner.", no_args_is_help=True)
 console = Console()
+
+@app.callback()
+def callback():
+    """NetPulse SSH CLI."""
+    pass
 
 @app.command("execute")
 def execute(

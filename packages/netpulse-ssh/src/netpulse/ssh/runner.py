@@ -48,6 +48,7 @@ class SmartSshClient:
         # Bypass host key checking using our custom validator
         if config.ignore_host_keys:
             connect_opts["client_factory"] = TrustingSSHClient
+            connect_opts["known_hosts"] = None
 
         conn = None
         negotiated_kex = None
