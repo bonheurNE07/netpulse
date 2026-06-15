@@ -1,6 +1,8 @@
 import asyncio
 import time
 import logging
+import sys
+import re
 import asyncssh
 from typing import List, Optional, Tuple
 from datetime import datetime, timezone
@@ -192,9 +194,6 @@ class SmartSshClient:
                 else:
                     raise e
             
-            import sys
-            import asyncio
-            
             if sys.platform == "win32":
                 # Enable VT100 Virtual Terminal Processing on Windows to render ANSI escape sequences
                 import ctypes
@@ -208,7 +207,6 @@ class SmartSshClient:
                 except Exception:
                     pass
 
-                import re
                 osc_escape = re.compile(r'\x1b\].*?(?:\x1b\\|\x07)')
                 bracketed_paste = re.compile(r'\x1b\[\?2004[hl]')
 

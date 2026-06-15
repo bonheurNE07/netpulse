@@ -21,9 +21,10 @@
 
 ## ✨ Features
 
-- **Massive Concurrency**: Scales horizontally using `asyncio` to execute commands across hundreds of targets simultaneously.
-- **Legacy Equipment Healing**: Automatically detects strict OpenSSH cipher drops and seamlessly falls back to legacy algorithms (e.g., `diffie-hellman-group1-sha1`, `3des-cbc`) which are frequently required for older Cisco or Juniper gear.
-- **Smart Privilege Escalation**: Natively supports Cisco `enable` mode privilege escalation without breaking automation.
+- **Massive Concurrency**: Scales horizontally using `asyncio` to execute commands across hundreds of targets simultaneously, dramatically reducing execution time.
+- **Pure Python PTY Emulator**: Ships with a fully self-contained, cross-platform Pseudo-Terminal (PTY) emulator. Features native raw keystroke capturing (including Arrow keys and Tab-completion) on Windows, entirely independent of the underlying OS SSH binaries.
+- **Legacy Equipment Healing**: Automatically detects strict OpenSSH cipher drops and seamlessly falls back to legacy algorithms (e.g., `diffie-hellman-group1-sha1`, `3des-cbc`) frequently required for older Cisco or Juniper gear.
+- **Smart Privilege Escalation**: Natively supports Cisco `enable` mode privilege escalation without breaking automation flows.
 - **Pagination Suppression**: Automatically injects `terminal length 0` before command execution to bypass interactive `--More--` prompts.
 - **REST API Enabled**: Run the built-in FastAPI uvicorn wrapper to serve concurrent execution logic dynamically to web dashboards or automation scripts.
 
