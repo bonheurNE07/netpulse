@@ -2,12 +2,14 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
-from netpulse.subnet.models.subnet import SubnetInfo, VLSMResult
+from netpulse.subnet.models.subnet import SubnetInfo, VLSMResult, ValidationResult, SummarizeResult
 from netpulse.subnet.services.subnet import (
     calculate_subnet_info,
     split_fixed_length,
     allocate_vlsm,
-    find_containing_subnet
+    find_containing_subnet,
+    validate_subnets,
+    summarize_subnets
 )
 from fastapi import FastAPI
 
@@ -34,6 +36,10 @@ class SubnetVLSMRequest(BaseModel):
 class SubnetDiscoverRequest(BaseModel):
     ip: str = Field(..., description="IP address to lookup.", examples=["192.168.1.45"])
     subnets: List[str] = Field(..., description="List of subnets in CIDR notation to search in.", examples=[["192.168.1.0/26", "192.168.1.64/26"]])
+
+class SubnetValidateRequest(BaseModel):
+    subnets: List[str] = Field(..., description="List of CIDR subnets to validate for overlaps.", examples=[["10.0.0.0/24", "10.0.0.128/25"]])
+    parent_network: Optional[str] = Field(None, description="Optional parent network to calculate free space.", examples=["10.0.0.0/23"])
 
 # 7. Subnet Endpoints
 @subnet_router.post("/api/v1/subnet/info", response_model=SubnetInfo, status_code=status.HTTP_200_OK)
@@ -104,6 +110,41 @@ def discover_containing_subnet(req: SubnetDiscoverRequest):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "SubnetLookupError",
+                "message": str(e)
+            }
+        )
+
+@subnet_router.post("/api/v1/subnet/validate", response_model=ValidationResult, status_code=status.HTTP_200_OK)
+def validate_subnet_overlaps(req: SubnetValidateRequest):
+    """
+    Checks a list of subnets for overlaps and returns conflicts and remaining free space.
+    """
+    try:
+        return validate_subnets(req.subnets, req.parent_network)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "SubnetValidationError",
+                "message": str(e)
+            }
+        )
+
+class SubnetSummarizeRequest(BaseModel):
+    subnets: List[str] = Field(..., description="List of CIDR subnets to summarize.", examples=[["192.168.0.0/24", "192.168.1.0/24"]])
+
+@subnet_router.post("/api/v1/subnet/summarize", response_model=SummarizeResult, status_code=status.HTTP_200_OK)
+def summarize_subnet_blocks(req: SubnetSummarizeRequest):
+    """
+    Summarizes multiple subnets into the tightest encompassing supernet CIDR block.
+    """
+    try:
+        return summarize_subnets(req.subnets)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "SummarizeError",
                 "message": str(e)
             }
         )

@@ -6,7 +6,9 @@ from netpulse.subnet.models.subnet import (
     SubnetInfo,
     VLSMRequirement,
     VLSMAllocation,
-    VLSMResult
+    VLSMResult,
+    ValidationResult,
+    OverlapPair
 )
 
 
@@ -30,13 +32,13 @@ def calculate_subnet_info(ip: str, mask_or_prefix: str) -> SubnetInfo:
     ip_addr = ipaddress.ip_address(ip)
     netmask = network.netmask
     wildcard = network.hostmask
-    broadcast = network.broadcast_address
     network_addr = network.network_address
     prefix_len = network.prefixlen
 
     # Usable IP calculations
     num_addresses = network.num_addresses
     if network.version == 4:
+        broadcast = network.broadcast_address
         if prefix_len == 32:
             first_usable = network_addr
             last_usable = network_addr
@@ -50,10 +52,20 @@ def calculate_subnet_info(ip: str, mask_or_prefix: str) -> SubnetInfo:
             last_usable = broadcast - 1
             total_hosts = num_addresses - 2
     else:
-        # IPv6
-        first_usable = network_addr
-        last_usable = broadcast
-        total_hosts = num_addresses
+        # IPv6 natively has no broadcast address
+        broadcast = None
+        if prefix_len == 128:
+            first_usable = network_addr
+            last_usable = network_addr
+            total_hosts = 1
+        elif prefix_len == 127:
+            first_usable = network_addr
+            last_usable = network_addr + 1
+            total_hosts = 2
+        else:
+            first_usable = network_addr + 1
+            last_usable = network_addr + num_addresses - 1
+            total_hosts = num_addresses - 1  # Excluding the subnet-router anycast (network_addr)
 
     # Helper for formatting dotted binary IP strings
     def to_binary(addr: ipaddress.ip_address) -> str:
@@ -85,54 +97,86 @@ def calculate_subnet_info(ip: str, mask_or_prefix: str) -> SubnetInfo:
 
 def split_fixed_length(
     parent_network: str,
-    subnets_count: Optional[int] = None,
-    hosts_per_subnet: Optional[int] = None
+    subnets_count: int = None,
+    hosts_per_subnet: int = None,
+    reserved_blocks: List[str] = None
 ) -> List[str]:
     """
     Splits a parent CIDR into equal-sized subnets based either on subnets_count
     or hosts_per_subnet requirements.
+    Safely limits output to 65536 subnets to prevent MemoryErrors on IPv6.
     """
     try:
-        network = ipaddress.ip_network(parent_network, strict=False)
+        parent_net = ipaddress.ip_network(parent_network, strict=False)
     except ValueError as e:
         raise ValueError(f"Invalid parent CIDR '{parent_network}': {e}")
 
-    max_bits = 32 if network.version == 4 else 128
+    MAX_SUBNETS = 65536
 
     if subnets_count is not None:
-        if subnets_count <= 0:
-            raise ValueError("Subnets count must be greater than zero.")
-        bits_to_add = math.ceil(math.log2(subnets_count))
-        new_prefix = network.prefixlen + bits_to_add
-        if new_prefix > max_bits:
-            raise ValueError(
-                f"Cannot split network {parent_network} into {subnets_count} subnets (prefix length exceeds {max_bits})."
-            )
+        if subnets_count <= 0 or not (subnets_count & (subnets_count - 1) == 0):
+            raise ValueError("subnets_count must be a positive power of 2.")
+            
+        new_prefix = parent_net.prefixlen + int(math.log2(subnets_count))
+        if new_prefix > parent_net.max_prefixlen:
+            raise ValueError(f"Cannot split /{parent_net.prefixlen} into {subnets_count} subnets (prefix too long).")
+            
+        subnets = list(parent_net.subnets(new_prefix=new_prefix))
         
-        subnets = list(network.subnets(new_prefix=new_prefix))
-        return [str(s) for s in subnets[:subnets_count]]
+        # Exclude reserved blocks if any
+        if reserved_blocks:
+            valid_subnets = []
+            for s in subnets:
+                is_free = True
+                for r in reserved_blocks:
+                    try:
+                        r_net = ipaddress.ip_network(r, strict=False)
+                        if s.overlaps(r_net):
+                            is_free = False
+                            break
+                    except ValueError:
+                        continue
+                if is_free:
+                    valid_subnets.append(s)
+            subnets = valid_subnets
+            
+        return [str(s) for s in subnets[:MAX_SUBNETS]]
 
     elif hosts_per_subnet is not None:
         if hosts_per_subnet <= 0:
-            raise ValueError("Hosts per subnet must be greater than zero.")
+            raise ValueError("hosts_per_subnet must be a positive integer.")
+            
+        needed_addresses = hosts_per_subnet + 2 if parent_net.version == 4 else hosts_per_subnet + 1
+        host_bits = math.ceil(math.log2(needed_addresses))
+        new_prefix = parent_net.max_prefixlen - host_bits
         
-        # Add 2 for network & broadcast overhead in IPv4 standard subnetting
-        needed_hosts = hosts_per_subnet + 2 if network.version == 4 else hosts_per_subnet
-        host_bits = math.ceil(math.log2(needed_hosts))
-        new_prefix = max_bits - host_bits
+        if new_prefix < parent_net.prefixlen:
+            raise ValueError(f"Parent network /{parent_net.prefixlen} is too small to fit subnets with {hosts_per_subnet} hosts.")
+            
+        subnets = list(parent_net.subnets(new_prefix=new_prefix))
         
-        if new_prefix < network.prefixlen:
-            raise ValueError(
-                f"Parent network {parent_network} is too small to accommodate subnets with {hosts_per_subnet} hosts."
-            )
-        
-        subnets = list(network.subnets(new_prefix=new_prefix))
-        return [str(s) for s in subnets]
+        if reserved_blocks:
+            valid_subnets = []
+            for s in subnets:
+                is_free = True
+                for r in reserved_blocks:
+                    try:
+                        r_net = ipaddress.ip_network(r, strict=False)
+                        if s.overlaps(r_net):
+                            is_free = False
+                            break
+                    except ValueError:
+                        continue
+                if is_free:
+                    valid_subnets.append(s)
+            subnets = valid_subnets
+            
+        return [str(s) for s in subnets[:MAX_SUBNETS]]
     else:
         raise ValueError("Either subnets_count or hosts_per_subnet must be provided.")
 
 
-def allocate_vlsm(parent_network: str, requirements: List[Dict[str, Any]]) -> VLSMResult:
+def allocate_vlsm(parent_network: str, requirements: List[Dict[str, Any]], reserved_blocks: List[str] = None) -> VLSMResult:
     """
     Performs Variable-Length Subnet Masking (VLSM) allocation.
     Sorts host requirements descending, and allocates the smallest power-of-two blocks possible.
@@ -159,6 +203,21 @@ def allocate_vlsm(parent_network: str, requirements: List[Dict[str, Any]]) -> VL
 
     # Maintain pool of free subnets, sorted by network address
     free_pool: List[ipaddress.IPv4Network] = [parent_net]
+    
+    if reserved_blocks:
+        for r in reserved_blocks:
+            try:
+                r_net = ipaddress.ip_network(r, strict=False)
+                new_pool = []
+                for free_block in free_pool:
+                    if r_net.subnet_of(free_block):
+                        new_pool.extend(list(free_block.address_exclude(r_net)))
+                    elif not free_block.overlaps(r_net):
+                        new_pool.append(free_block)
+                free_pool = new_pool
+            except ValueError:
+                continue
+        free_pool.sort(key=lambda x: x.network_address)
     allocations: List[VLSMAllocation] = []
     unallocated: List[VLSMRequirement] = []
 
@@ -257,3 +316,137 @@ def find_containing_subnet(ip: str, subnets: List[str]) -> Optional[str]:
             continue
 
     return None
+
+def validate_subnets(subnets: List[str], parent_network: Optional[str] = None) -> ValidationResult:
+    """
+    Ingests a list of subnets and detects any mathematical overlaps using an O(N log N) sweep line algorithm.
+    If a parent network is provided, calculates the remaining free space using address exclusion.
+    """
+    parsed_networks = []
+    for s in subnets:
+        if not s.strip():
+            continue
+        try:
+            net = ipaddress.ip_network(s.strip(), strict=False)
+            parsed_networks.append(net)
+        except ValueError:
+            raise ValueError(f"Invalid subnet provided for validation: '{s}'")
+            
+    # Sweep line algorithm for overlap detection
+    # Sort networks by their integer base address
+    parsed_networks.sort(key=lambda n: int(n.network_address))
+    
+    overlaps: List[OverlapPair] = []
+    
+    # Iterate and check if current network overlaps with previous max extent
+    if parsed_networks:
+        current_max_net = parsed_networks[0]
+        
+        for i in range(1, len(parsed_networks)):
+            net = parsed_networks[i]
+            
+            def get_broadcast(n):
+                if n.version == 4:
+                    return int(n.broadcast_address)
+                else:
+                    return int(n.network_address) + n.num_addresses - 1
+            
+            if int(net.network_address) <= get_broadcast(current_max_net):
+                overlaps.append(OverlapPair(
+                    subnet1=str(current_max_net),
+                    subnet2=str(net)
+                ))
+                if get_broadcast(net) > get_broadcast(current_max_net):
+                    current_max_net = net
+            else:
+                current_max_net = net
+
+    # Free Space Calculation
+    free_space_cidrs = []
+    if parent_network:
+        try:
+            parent_net = ipaddress.ip_network(parent_network.strip(), strict=False)
+        except ValueError as e:
+            raise ValueError(f"Invalid parent network '{parent_network}': {e}")
+            
+        valid_subnets_in_parent = []
+        for n in parsed_networks:
+            if n.subnet_of(parent_net):
+                valid_subnets_in_parent.append(n)
+                
+        if valid_subnets_in_parent:
+            collapsed = list(ipaddress.collapse_addresses(valid_subnets_in_parent))
+            free_pool = [parent_net]
+            
+            for used_block in collapsed:
+                new_pool = []
+                for free_block in free_pool:
+                    if used_block.subnet_of(free_block):
+                        new_pool.extend(list(free_block.address_exclude(used_block)))
+                    elif not free_block.overlaps(used_block):
+                        new_pool.append(free_block)
+                free_pool = new_pool
+            
+            free_pool.sort(key=lambda n: int(n.network_address))
+            free_space_cidrs = [str(f) for f in free_pool]
+        else:
+            free_space_cidrs = [str(parent_net)]
+            
+    return ValidationResult(
+        has_overlaps=len(overlaps) > 0,
+        overlaps=overlaps,
+        parent_network=parent_network,
+        free_space=free_space_cidrs
+    )
+
+def summarize_subnets(subnets: List[str]) -> 'SummarizeResult':
+    from netpulse.subnet.models.subnet import SummarizeResult
+    
+    if not subnets:
+        raise ValueError("No subnets provided for summarization.")
+        
+    parsed_networks = []
+    for s in subnets:
+        if not s.strip():
+            continue
+        try:
+            net = ipaddress.ip_network(s.strip(), strict=False)
+            parsed_networks.append(net)
+        except ValueError:
+            raise ValueError(f"Invalid subnet provided for summarization: '{s}'")
+            
+    if not parsed_networks:
+        raise ValueError("No valid subnets found to summarize.")
+        
+    versions = {n.version for n in parsed_networks}
+    if len(versions) > 1:
+        raise ValueError("Cannot summarize mixed IPv4 and IPv6 addresses.")
+        
+    collapsed = list(ipaddress.collapse_addresses(parsed_networks))
+    
+    min_ip = min(n.network_address for n in collapsed)
+    max_ip = max(n.broadcast_address if n.version == 4 else n.network_address + n.num_addresses - 1 for n in collapsed)
+    
+    version = collapsed[0].version
+    max_bits = 32 if version == 4 else 128
+    
+    min_int = int(min_ip)
+    max_int = int(max_ip)
+    
+    xor = min_int ^ max_int
+    host_bits = xor.bit_length()
+    prefix_len = max_bits - host_bits
+    
+    supernet = ipaddress.ip_network(f"{min_ip}/{prefix_len}", strict=False)
+    
+    total_ips = supernet.num_addresses
+    provided_ips = sum(n.num_addresses for n in collapsed)
+    slack_ips = total_ips - provided_ips
+    
+    return SummarizeResult(
+        supernet=str(supernet),
+        total_ips=total_ips,
+        provided_ips=provided_ips,
+        slack_ips=slack_ips,
+        has_slack=slack_ips > 0
+    )

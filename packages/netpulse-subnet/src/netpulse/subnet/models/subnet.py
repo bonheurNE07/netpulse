@@ -14,7 +14,7 @@ class SubnetInfo(BaseModel):
     prefix_length: int = Field(..., ge=0, le=128, description="The network prefix length.")
     netmask: IPvAnyAddress = Field(..., description="The subnet mask.")
     wildcard_mask: IPvAnyAddress = Field(..., description="The wildcard/host mask.")
-    broadcast_address: IPvAnyAddress = Field(..., description="The broadcast address.")
+    broadcast_address: Optional[IPvAnyAddress] = Field(None, description="The broadcast address (IPv4 only).")
     first_usable: Optional[IPvAnyAddress] = Field(None, description="The first assignable host IP.")
     last_usable: Optional[IPvAnyAddress] = Field(None, description="The last assignable host IP.")
     total_hosts: int = Field(..., description="Total usable/assignable host IPs in the subnet.")
@@ -61,3 +61,26 @@ class VLSMResult(BaseModel):
         default_factory=list,
         description="CIDR strings of the remaining unallocated free subnets."
     )
+
+class OverlapPair(BaseModel):
+    """
+    Represents two explicitly overlapping subnets.
+    """
+    subnet1: str = Field(..., description="The first conflicting CIDR block.")
+    subnet2: str = Field(..., description="The second conflicting CIDR block.")
+
+class ValidationResult(BaseModel):
+    """
+    Result of a massive subnet overlap check and free space validation.
+    """
+    has_overlaps: bool = Field(..., description="True if any subnets conflict.")
+    overlaps: List[OverlapPair] = Field(default_factory=list, description="List of all detected overlaps.")
+    parent_network: Optional[str] = Field(None, description="The parent CIDR block, if provided.")
+    free_space: List[str] = Field(default_factory=list, description="Unallocated remaining subnets in the parent block.")
+
+class SummarizeResult(BaseModel):
+    supernet: str = Field(..., description="The tightest covering CIDR block")
+    total_ips: int = Field(..., description="Total IP capacity of the supernet")
+    provided_ips: int = Field(..., description="Total IP capacity of the provided subnets")
+    slack_ips: int = Field(..., description="Difference between total_ips and provided_ips")
+    has_slack: bool = Field(..., description="True if the supernet covers space not explicitly provided")

@@ -9,6 +9,9 @@ The `split_fixed_length` algorithm allows operators to partition a large parent 
 1. **By Subnet Count**: Given a target number of subnets, it finds the smallest power of 2 that accommodates that count, increments the prefix length, and generates the blocks.
 2. **By Host Count**: Given a target number of hosts per subnet, it calculates the required host bits `h` where `2^h - 2 >= hosts`, calculates the new prefix length `32 - h`, and generates the blocks.
 
+### IPv6 Memory Safety Constraints
+Because IPv6 addresses span 128 bits, mathematical splits can yield an astronomically large number of subnets (e.g. splitting a `/48` into `/64`s results in 65,536 subnets). To prevent fatal `MemoryError` crashes in the Python process, the FLSM engine streams subnets utilizing lazily evaluated iterators (`itertools.islice`) and enforces a hard truncation limit of **65,536** returned subnets.
+
 ## Variable-Length Subnet Masking (VLSM)
 
 The `allocate_vlsm` algorithm provides highly efficient address space utilization by avoiding wastage. 
