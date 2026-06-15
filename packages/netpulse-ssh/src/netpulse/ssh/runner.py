@@ -193,8 +193,39 @@ class SmartSshClient:
                     raise e
             
             import sys
-            async with conn.create_process(term_type='vt100', stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr) as process:
-                await process.wait()
+            import asyncio
+            
+            if sys.platform == "win32":
+                async with conn.create_process(term_type='vt100') as process:
+                    async def forward_out():
+                        try:
+                            while True:
+                                data = await process.stdout.read(1024)
+                                if not data:
+                                    break
+                                sys.stdout.write(data)
+                                sys.stdout.flush()
+                        except Exception:
+                            pass
+
+                    async def forward_in():
+                        loop = asyncio.get_running_loop()
+                        try:
+                            while True:
+                                line = await loop.run_in_executor(None, sys.stdin.readline)
+                                if not line:
+                                    break
+                                process.stdin.write(line)
+                        except Exception:
+                            pass
+                    
+                    await asyncio.gather(
+                        forward_out(), 
+                        forward_in()
+                    )
+            else:
+                async with conn.create_process(term_type='vt100', stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr) as process:
+                    await process.wait()
                 
         except Exception as e:
             logger.error(f"Interactive Shell Error on {ip}: {e}")
