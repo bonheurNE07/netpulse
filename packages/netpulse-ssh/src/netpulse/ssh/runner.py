@@ -152,7 +152,7 @@ class SmartSshClient:
                 await conn.wait_closed()
 
     @classmethod
-    async def connect_and_shell(cls, config: SshHostConfig) -> None:
+    async def connect_and_shell(cls, config: SshHostConfig, term_type: str = "xterm-256color") -> None:
         """
         Resiliently connects to a host via SSH and delegates local terminal
         standard IO to a remote interactive PTY session.
@@ -196,13 +196,31 @@ class SmartSshClient:
             import asyncio
             
             if sys.platform == "win32":
-                async with conn.create_process(term_type='vt100') as process:
+                # Enable VT100 Virtual Terminal Processing on Windows to render ANSI escape sequences
+                import ctypes
+                import msvcrt
+                try:
+                    kernel32 = ctypes.windll.kernel32
+                    handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+                    mode = ctypes.c_uint()
+                    kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+                    kernel32.SetConsoleMode(handle, mode.value | 0x0004)
+                except Exception:
+                    pass
+
+                import re
+                osc_escape = re.compile(r'\x1b\].*?(?:\x1b\\|\x07)')
+                bracketed_paste = re.compile(r'\x1b\[\?2004[hl]')
+
+                async with conn.create_process(term_type=term_type) as process:
                     async def forward_out():
                         try:
                             while True:
                                 data = await process.stdout.read(1024)
                                 if not data:
                                     break
+                                data = osc_escape.sub('', data)
+                                data = bracketed_paste.sub('', data)
                                 sys.stdout.write(data)
                                 sys.stdout.flush()
                         except Exception:
@@ -212,10 +230,26 @@ class SmartSshClient:
                         loop = asyncio.get_running_loop()
                         try:
                             while True:
-                                line = await loop.run_in_executor(None, sys.stdin.readline)
-                                if not line:
-                                    break
-                                process.stdin.write(line)
+                                char = await loop.run_in_executor(None, msvcrt.getch)
+                                if char == b'\x03': # Ctrl+C
+                                    process.stdin.write('\x03')
+                                    continue
+                                
+                                if char in (b'\x00', b'\xe0'):
+                                    # Handle Windows special keys
+                                    char2 = await loop.run_in_executor(None, msvcrt.getch)
+                                    if char2 == b'H': char = b'\x1b[A' # Up Arrow
+                                    elif char2 == b'P': char = b'\x1b[B' # Down Arrow
+                                    elif char2 == b'M': char = b'\x1b[C' # Right Arrow
+                                    elif char2 == b'K': char = b'\x1b[D' # Left Arrow
+                                    elif char2 == b'S': char = b'\x1b[3~' # Delete
+                                    else: char = b''
+                                
+                                if char:
+                                    try:
+                                        process.stdin.write(char.decode('utf-8'))
+                                    except UnicodeDecodeError:
+                                        pass
                         except Exception:
                             pass
                     
@@ -224,7 +258,7 @@ class SmartSshClient:
                         forward_in()
                     )
             else:
-                async with conn.create_process(term_type='vt100', stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr) as process:
+                async with conn.create_process(term_type=term_type, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr) as process:
                     await process.wait()
                 
         except Exception as e:
@@ -326,9 +360,9 @@ class SshRunnerService:
 
         return audit
 
-    async def interactive_shell(self, config: SshHostConfig) -> None:
+    async def interactive_shell(self, config: SshHostConfig, term_type: str = "xterm-256color") -> None:
         """
-        Opens a fully interactive SSH shell (PTY) to the target host, connecting
-        standard input and output natively.
+        Opens a fully interactive SSH shell natively over the terminal.
         """
-        await SmartSshClient.connect_and_shell(config)
+        client = SmartSshClient()
+        await client.connect_and_shell(config, term_type=term_type)
