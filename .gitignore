@@ -13,7 +13,7 @@ __pycache__/
 .ruff_cache/
 
 # Rust / Maturin Build Artifacts
-rust/target/
+**/target/
 *.so
 *.dylib
 *.dll
