@@ -44,6 +44,24 @@ You can compute topological network drift locally by supplying two JSON scan exp
 netpulse-discovery drift old_scan.json new_scan.json --output drift_report.yaml
 ```
 
+### Continuous Daemon Mode (Watch)
+
+You can run NetPulse Discovery as a continuous daemon that performs stateless drift comparisons against its own in-memory history. It can even fire JSON payloads to a webhook whenever drift is detected!
+
+```bash
+# Scan every 5 minutes and post alerts to a webhook
+sudo netpulse-discovery watch 192.168.1.0/24 --interval 300 --webhook https://example.com/webhook
+```
+
+### Infrastructure-as-Code Inventory Generation
+
+Automatically generate dynamic configuration management inventories from the live network:
+
+```bash
+# Generate an Ansible hosts.yaml file
+sudo netpulse-discovery generate-inventory 192.168.1.0/24 --format ansible --output hosts.yaml
+```
+
 ### Standalone API Server
 
 To spin up a standalone REST API microservice:
