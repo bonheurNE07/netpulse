@@ -2,9 +2,9 @@ import uuid
 from typing import Optional
 from datetime import datetime, timezone
 
-from netpulse.core.models.device import Device, DeviceStatus
-from netpulse.core.models.discovery import DiscoveryResult
-from netpulse.core.models.drift import DeviceChange, DriftResult
+from netpulse.discovery.models.device import Device, DeviceStatus
+from netpulse.discovery.models.discovery import DiscoveryResult
+from netpulse.discovery.models.drift import DeviceChange, DriftResult
 
 
 class DriftService:

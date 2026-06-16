@@ -9,11 +9,11 @@ from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from netpulse.core.services.discovery import DiscoveryService
-from netpulse.core.models.discovery import DiscoveryMethod, DiscoveryResult
+from netpulse.discovery.services.discovery import DiscoveryService
+from netpulse.discovery.models.discovery import DiscoveryMethod, DiscoveryResult
 from netpulse.core.services.db import DatabaseService
-from netpulse.core.services.drift import DriftService
-from netpulse.core.models.drift import DriftResult
+from netpulse.discovery.services.drift import DriftService
+from netpulse.discovery.models.drift import DriftResult
 
 
 # Initialize persistent SQLite storage & drift services

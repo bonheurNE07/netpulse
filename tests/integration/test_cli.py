@@ -4,7 +4,7 @@ import pytest
 from typer.testing import CliRunner
 
 from netpulse_cli.main import app
-from netpulse.core.models.discovery import DiscoveryResult, DiscoveryMethod
+from netpulse.discovery.models.discovery import DiscoveryResult, DiscoveryMethod
 
 
 runner = CliRunner()

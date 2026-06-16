@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from pydantic import ValidationError
 
-from netpulse.core.models.device import Device, DeviceStatus
-from netpulse.core.models.discovery import DiscoveryResult, DiscoveryMethod
+from netpulse.discovery.models.device import Device, DeviceStatus
+from netpulse.discovery.models.discovery import DiscoveryResult, DiscoveryMethod
 
 
 def test_device_creation_defaults():

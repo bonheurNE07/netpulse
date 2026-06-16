@@ -4,7 +4,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from netpulse_api.main import app, request_history
-from netpulse.core.models.discovery import DiscoveryResult, DiscoveryMethod
+from netpulse.discovery.models.discovery import DiscoveryResult, DiscoveryMethod
 
 
 @pytest.fixture(autouse=True)

@@ -2,7 +2,7 @@ import os
 import sys
 import pytest
 
-from netpulse.core.engine import scan_arp, scan_icmp
+from netpulse.discovery.engine import scan_arp, scan_icmp
 
 
 def test_scan_arp_fallback():

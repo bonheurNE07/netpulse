@@ -2,7 +2,7 @@ import uuid
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-from netpulse.core.models.device import Device
+from netpulse.discovery.models.device import Device
 
 
 class DeviceChange(BaseModel):

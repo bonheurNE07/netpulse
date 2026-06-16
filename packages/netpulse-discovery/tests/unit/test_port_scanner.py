@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, patch
 import asyncio
 
-from netpulse.core.services.port_scanner import PortScannerService, COMMON_PORTS_MAP
+from netpulse.discovery.services.port_scanner import PortScannerService, COMMON_PORTS_MAP
 
 @pytest.mark.asyncio
 async def test_scan_single_port_open():

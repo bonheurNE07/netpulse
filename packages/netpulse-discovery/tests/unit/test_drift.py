@@ -2,9 +2,9 @@ import pytest
 import uuid
 from datetime import datetime, timezone
 
-from netpulse.core.models.device import Device, DeviceStatus
-from netpulse.core.models.discovery import DiscoveryResult, DiscoveryMethod
-from netpulse.core.services.drift import DriftService
+from netpulse.discovery.models.device import Device, DeviceStatus
+from netpulse.discovery.models.discovery import DiscoveryResult, DiscoveryMethod
+from netpulse.discovery.services.drift import DriftService
 
 
 def test_calculate_drift_first_scan():

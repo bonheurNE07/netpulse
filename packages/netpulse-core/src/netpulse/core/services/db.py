@@ -5,8 +5,14 @@ import os
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
-from netpulse.core.models.device import Device, DeviceStatus
-from netpulse.core.models.discovery import DiscoveryResult, DiscoveryMethod
+try:
+    from netpulse.discovery.models.device import Device, DeviceStatus
+    from netpulse.discovery.models.discovery import DiscoveryResult, DiscoveryMethod
+except ImportError:
+    Device = Any
+    DeviceStatus = Any
+    DiscoveryResult = Any
+    DiscoveryMethod = Any
 
 try:
     from netpulse.ssh.models import SshExecutionAudit
