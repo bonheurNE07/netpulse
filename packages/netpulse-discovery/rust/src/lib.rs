@@ -258,7 +258,7 @@ fn scan_icmp(
     socket.set_read_timeout(Some(Duration::from_millis(50))).unwrap_or(());
 
     let socket = Arc::new(socket);
-    let replies = Arc::new(Mutex::new(HashMap::<IpAddr, Instant>::new()));
+    let replies = Arc::new(Mutex::new(HashMap::<IpAddr, (Instant, Option<u8>)>::new()));
     let stop_rx = Arc::new(AtomicBool::new(false));
 
     // 3. Spawn background receiver thread
@@ -282,8 +282,10 @@ fn scan_icmp(
 
                         // If it's a RAW socket, we get the whole IPv4 packet.
                         // If it's a DGRAM ping socket, we get only the ICMP payload.
+                        let mut ttl_val = None;
                         let icmp_payload = if size >= 20 && (initialized_slice[0] >> 4) == 4 {
                             let ihl = (initialized_slice[0] & 0x0f) as usize * 4;
+                            ttl_val = Some(initialized_slice[8]);
                             if size >= ihl + 8 {
                                 &initialized_slice[ihl..size]
                             } else {
@@ -301,7 +303,7 @@ fn scan_icmp(
                             let identifier = u16::from_be_bytes([icmp_payload[4], icmp_payload[5]]);
                             if identifier == 0x1234 {
                                 let mut locked = rx_replies.lock().unwrap();
-                                locked.insert(ip, Instant::now());
+                                locked.insert(ip, (Instant::now(), ttl_val));
                             }
                         }
                     }
@@ -362,7 +364,7 @@ fn scan_icmp(
     let final_replies = replies.lock().unwrap();
 
     for (ip, send_time) in send_times.iter() {
-        if let Some(recv_time) = final_replies.get(ip) {
+        if let Some((recv_time, ttl_val)) = final_replies.get(ip) {
             if *recv_time >= *send_time {
                 let rtt_ms = (*recv_time - *send_time).as_secs_f64() * 1000.0;
                 let device = PyDict::new(py);
@@ -370,6 +372,11 @@ fn scan_icmp(
                 device.set_item("mac", py.None())?;
                 device.set_item("rtt_ms", rtt_ms)?;
                 device.set_item("status", "up")?;
+                if let Some(t) = ttl_val {
+                    device.set_item("ttl", *t)?;
+                } else {
+                    device.set_item("ttl", py.None())?;
+                }
                 results.append(device)?;
             }
         }
@@ -378,10 +385,178 @@ fn scan_icmp(
     Ok(results)
 }
 
+/// Perform a high-speed ICMP traceroute to a target IP.
+#[pyfunction]
+#[pyo3(signature = (target, max_hops=30, timeout_ms=2000))]
+fn traceroute(
+    py: Python<'_>,
+    target: String,
+    max_hops: u32,
+    timeout_ms: u64,
+) -> PyResult<Bound<'_, PyList>> {
+    let target_ip: IpAddr = target.parse().map_err(|e| {
+        PyValueError::new_err(format!("Invalid IP '{}': {}", target, e))
+    })?;
+
+    let socket = match Socket::new(Domain::IPV4, Type::RAW, Some(Protocol::ICMPV4)) {
+        Ok(s) => s,
+        Err(e) => {
+            return Err(PyPermissionError::new_err(format!(
+                "Permission Denied: Traceroute requires root or CAP_NET_RAW capability.\nError: {}", e
+            )));
+        }
+    };
+    socket.set_read_timeout(Some(Duration::from_millis(timeout_ms))).unwrap_or(());
+
+    let target_sockaddr = socket2::SockAddr::from(SocketAddr::new(target_ip, 0));
+    let results = PyList::empty(py);
+
+    for ttl in 1..=max_hops {
+        if let Err(e) = socket.set_ttl(ttl) {
+            return Err(PyOSError::new_err(format!("Failed to set TTL: {}", e)));
+        }
+
+        let mut packet = [0u8; 8];
+        packet[0] = 8;     // Echo Request
+        packet[1] = 0;
+        packet[2] = 0;     // Checksum
+        packet[3] = 0;
+        packet[4] = 0x11;  // Identifier
+        packet[5] = 0x22;
+        packet[6] = 0;     // Sequence
+        packet[7] = ttl as u8;
+
+        let cs = calculate_checksum(&packet);
+        packet[2] = (cs >> 8) as u8;
+        packet[3] = (cs & 0xff) as u8;
+
+        let start_time = Instant::now();
+        if let Err(e) = socket.send_to(&packet, &target_sockaddr) {
+            return Err(PyOSError::new_err(format!("Failed to send packet: {}", e)));
+        }
+
+        let mut buf = [MaybeUninit::<u8>::uninit(); 1024];
+        let mut got_reply = false;
+        
+        while start_time.elapsed() < Duration::from_millis(timeout_ms) {
+            match socket.recv_from(&mut buf) {
+                Ok((size, addr)) => {
+                    let rtt_ms = start_time.elapsed().as_secs_f64() * 1000.0;
+                    let reply_ip = addr.as_socket_ipv4().map(|s| IpAddr::V4(*s.ip()))
+                        .or_else(|| addr.as_socket_ipv6().map(|s| IpAddr::V6(*s.ip()))).unwrap();
+                        
+                    let initialized_slice = unsafe {
+                        std::slice::from_raw_parts(buf.as_ptr() as *const u8, size)
+                    };
+                    
+                    if size >= 20 {
+                        let ihl = (initialized_slice[0] & 0x0f) as usize * 4;
+                        if size >= ihl + 8 {
+                            let icmp_type = initialized_slice[ihl];
+                            if icmp_type == 11 { // Time Exceeded
+                                let hop = PyDict::new(py);
+                                hop.set_item("hop", ttl)?;
+                                hop.set_item("ip", reply_ip.to_string())?;
+                                hop.set_item("rtt_ms", rtt_ms)?;
+                                results.append(hop)?;
+                                got_reply = true;
+                                break;
+                            } else if icmp_type == 0 { // Echo Reply
+                                let hop = PyDict::new(py);
+                                hop.set_item("hop", ttl)?;
+                                hop.set_item("ip", reply_ip.to_string())?;
+                                hop.set_item("rtt_ms", rtt_ms)?;
+                                results.append(hop)?;
+                                return Ok(results); // Reached destination!
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+        
+        if !got_reply {
+            let hop = PyDict::new(py);
+            hop.set_item("hop", ttl)?;
+            hop.set_item("ip", "*")?;
+            hop.set_item("rtt_ms", py.None())?;
+            results.append(hop)?;
+        }
+    }
+    
+    Ok(results)
+}
+
+/// Listen passively for topology broadcast frames (CDP, LLDP).
+#[pyfunction]
+#[pyo3(signature = (interface, duration_ms=5000))]
+fn sniff_topology(
+    py: Python<'_>,
+    interface: String,
+    duration_ms: u64,
+) -> PyResult<Bound<'_, PyList>> {
+    let interfaces = datalink::interfaces();
+    let selected_interface = interfaces.into_iter().find(|i| i.name == interface).ok_or_else(|| {
+        PyOSError::new_err(format!("Interface '{}' not found", interface))
+    })?;
+
+    let (_, mut rx) = match datalink::channel(&selected_interface, Default::default()) {
+        Ok(Ethernet(_tx, rx)) => (_tx, rx),
+        Ok(_) => return Err(PyOSError::new_err("Unsupported channel type")),
+        Err(e) => return Err(PyPermissionError::new_err(format!("Permission Denied: {}", e))),
+    };
+
+    let results = PyList::empty(py);
+    let start = Instant::now();
+    let duration = Duration::from_millis(duration_ms);
+
+    // Keep track of what we've seen to avoid spam
+    let mut seen = std::collections::HashSet::new();
+
+    while start.elapsed() < duration {
+        if let Ok(frame) = rx.next() {
+            if let Some(eth) = EthernetPacket::new(frame) {
+                let dest = eth.get_destination();
+                let src = eth.get_source().to_string();
+                
+                // CDP
+                if dest == MacAddr::new(0x01, 0x00, 0x0c, 0xcc, 0xcc, 0xcc) {
+                    let key = format!("CDP-{}", src);
+                    if !seen.contains(&key) {
+                        seen.insert(key);
+                        let pkt = PyDict::new(py);
+                        pkt.set_item("protocol", "CDP")?;
+                        pkt.set_item("source_mac", src.clone())?;
+                        results.append(pkt)?;
+                    }
+                }
+                // LLDP
+                else if dest == MacAddr::new(0x01, 0x80, 0xc2, 0x00, 0x00, 0x0e) {
+                    let key = format!("LLDP-{}", src);
+                    if !seen.contains(&key) {
+                        seen.insert(key);
+                        let pkt = PyDict::new(py);
+                        pkt.set_item("protocol", "LLDP")?;
+                        pkt.set_item("source_mac", src.clone())?;
+                        results.append(pkt)?;
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(results)
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(scan_arp, m)?)?;
     m.add_function(wrap_pyfunction!(scan_icmp, m)?)?;
+    m.add_function(wrap_pyfunction!(traceroute, m)?)?;
+    m.add_function(wrap_pyfunction!(sniff_topology, m)?)?;
     Ok(())
 }

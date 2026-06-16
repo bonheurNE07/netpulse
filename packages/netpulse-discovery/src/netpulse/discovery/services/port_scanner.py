@@ -49,8 +49,16 @@ class PortScannerService:
                 # Attempt to open connection
                 conn = asyncio.open_connection(ip, port)
                 reader, writer = await asyncio.wait_for(conn, timeout=timeout_s)
-                
-                # Connection successful! Clean up socket properly
+                # Connection successful! Grab banner if possible
+                banner = None
+                try:
+                    # Give it a tiny window to send a banner
+                    data = await asyncio.wait_for(reader.read(1024), timeout=0.2)
+                    if data:
+                        banner = data.decode('utf-8', errors='ignore').strip()
+                except Exception:
+                    pass
+
                 writer.close()
                 try:
                     await writer.wait_closed()
@@ -61,6 +69,7 @@ class PortScannerService:
                 return {
                     "port": port,
                     "service": service,
+                    "banner": banner,
                     "status": "open"
                 }
             except (asyncio.TimeoutError, ConnectionRefusedError, OSError):

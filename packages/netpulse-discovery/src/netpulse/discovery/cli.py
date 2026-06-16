@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import json
 import yaml
 import urllib.request
@@ -11,6 +11,7 @@ from rich.console import Console
 
 from netpulse.discovery.services.discovery import DiscoveryService
 from netpulse.discovery.models.discovery import DiscoveryMethod, DiscoveryResult
+from netpulse.discovery.engine import traceroute as engine_traceroute, sniff_topology
 from netpulse.discovery.services.drift import DriftService
 
 app = typer.Typer(name="discovery", help="Standalone network discovery and drift engine.")
@@ -202,6 +203,69 @@ def generate_inventory(
     else:
         console.print(f"[red]Unsupported inventory format: {format}[/red]")
         raise typer.Exit(1)
+
+def export_results(data: Any, output: str, command_name: str):
+    """Helper to export CLI command results to json, yaml, or txt."""
+    out_path = Path(output)
+    
+    if out_path.suffix == ".json":
+        out_path.write_text(json.dumps(data, indent=2))
+    elif out_path.suffix in [".yml", ".yaml"]:
+        out_path.write_text(yaml.dump(data, sort_keys=False))
+    elif out_path.suffix == ".txt":
+        out_path.write_text(f"NetPulse {command_name} Output\n" + "="*40 + "\n")
+        out_path.open("a").write(json.dumps(data, indent=2))
+    else:
+        console.print(f"[yellow]Unknown extension {out_path.suffix}, defaulting to JSON[/yellow]")
+        out_path.write_text(json.dumps(data, indent=2))
+    console.print(f"[green]Results saved to {output}[/green]")
+
+@app.command(name="traceroute")
+def traceroute_cmd(
+    target: str = typer.Argument(..., help="Target IP address"),
+    max_hops: int = typer.Option(30, "--max-hops", "-m", help="Maximum number of hops to trace"),
+    timeout: int = typer.Option(2000, "--timeout", "-t", help="Timeout per hop in milliseconds"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Path to export results (.json, .yaml, .txt)"),
+):
+    """Perform a high-speed ICMP traceroute to the target."""
+    with console.status(f"Tracing route to {target} (max {max_hops} hops)..."):
+        try:
+            results = engine_traceroute(target, max_hops, timeout)
+        except Exception as e:
+            console.print(f"[red]Traceroute failed: {e}[/red]")
+            raise typer.Exit(1)
+            
+    console.print(f"\n[bold blue]Traceroute to {target}[/bold blue]")
+    for hop in results:
+        rtt = f"{hop['rtt_ms']:.2f}ms" if hop['rtt_ms'] is not None else "*"
+        console.print(f"{hop['hop']:2d}  {hop['ip']:<15}  {rtt}")
+        
+    if output:
+        export_results(results, output, "Traceroute")
+
+@app.command(name="sniff")
+def sniff_cmd(
+    interface: str = typer.Argument(..., help="Network interface to sniff on (e.g. eth0)"),
+    duration: int = typer.Option(10, "--duration", "-d", help="Duration to sniff in seconds"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Path to export results (.json, .yaml, .txt)"),
+):
+    """Passively sniff the network interface for CDP and LLDP topology broadcasts."""
+    console.print(f"[bold blue]Sniffing on {interface} for {duration} seconds...[/bold blue]")
+    try:
+        results = sniff_topology(interface, duration * 1000)
+    except Exception as e:
+        console.print(f"[red]Sniffing failed: {e}[/red]")
+        raise typer.Exit(1)
+        
+    if not results:
+        console.print("[yellow]No CDP or LLDP broadcasts detected in the timeframe.[/yellow]")
+    else:
+        console.print("\n[bold green]Topology Broadcasts Detected:[/bold green]")
+        for pkt in results:
+            console.print(f"- Protocol: [cyan]{pkt['protocol']}[/cyan] from [magenta]{pkt['source_mac']}[/magenta]")
+            
+    if output:
+        export_results(results, output, "Topology Sniffer")
 
 if __name__ == "__main__":
     app()

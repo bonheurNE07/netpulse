@@ -62,6 +62,18 @@ Automatically generate dynamic configuration management inventories from the liv
 sudo netpulse-discovery generate-inventory 192.168.1.0/24 --format ansible --output hosts.yaml
 ```
 
+### Advanced Network Intelligence (Layer 7)
+
+NetPulse Discovery includes deep packet inspection and routing tools:
+
+```bash
+# High-speed ICMP Traceroute to discover network paths
+sudo netpulse-discovery traceroute 8.8.8.8 --max-hops 30 --output route.yaml
+
+# Passive Topology Sniffer to capture CDP/LLDP broadcasts
+sudo netpulse-discovery sniff eth0 --duration 60 --output topology.json
+```
+
 ### Standalone API Server
 
 To spin up a standalone REST API microservice:

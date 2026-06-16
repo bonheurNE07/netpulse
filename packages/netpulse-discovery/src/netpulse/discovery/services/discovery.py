@@ -96,10 +96,21 @@ class DiscoveryService:
                     vendor = MacLookupService.resolve_vendor(mac)
 
                 # Let Pydantic validate and construct the model
+                os_guess = None
+                ttl = raw_device.get("ttl")
+                if ttl:
+                    if ttl <= 64:
+                        os_guess = "Linux/macOS"
+                    elif ttl <= 128:
+                        os_guess = "Windows"
+                    else:
+                        os_guess = "Network/Router"
+
                 device = Device(
                     ip=ip,
                     mac=mac,
                     vendor=vendor,
+                    os_guess=os_guess,
                     rtt_ms=raw_device.get("rtt_ms"),
                     status=raw_device.get("status", DeviceStatus.UNKNOWN)
                 )
@@ -129,6 +140,13 @@ class DiscoveryService:
                         ip_str = str(device.ip)
                         if ip_str in scan_results:
                             device.metadata["open_ports"] = scan_results[ip_str]
+                            services = {}
+                            for port_info in scan_results[ip_str]:
+                                port = port_info["port"]
+                                svc = port_info["service"]
+                                banner = port_info.get("banner")
+                                services[port] = f"{svc} - {banner}" if banner else svc
+                            device.services = services
                 except Exception as pe:
                     logger.error(f"Error during port scanning execution: {pe}")
                     errors.append(f"Port scan failed: {str(pe)}")

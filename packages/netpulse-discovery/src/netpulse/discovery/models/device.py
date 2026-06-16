@@ -60,6 +60,14 @@ class Device(BaseModel):
         None, 
         description="The manufacturer/vendor name derived from the MAC OUI."
     )
+    os_guess: Optional[str] = Field(
+        None,
+        description="The guessed Operating System based on IP TTL."
+    )
+    services: Dict[int, str] = Field(
+        default_factory=dict,
+        description="A dictionary mapping open ports to their detected service banners."
+    )
     
     # Discovery & State Fields
     status: DeviceStatus = Field(
