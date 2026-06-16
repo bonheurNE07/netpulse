@@ -2,6 +2,8 @@ import asyncio
 from typing import List, Optional
 import json
 import yaml
+import urllib.request
+import time
 from pathlib import Path
 
 import typer
@@ -111,6 +113,95 @@ def serve(
     
     console.print(f"[green]Starting Discovery API server on http://{host}:{port}[/green]")
     uvicorn.run(api_app, host=host, port=port)
+
+@app.command(name="watch")
+def watch(
+    target: str = typer.Argument(..., help="Target CIDR network"),
+    interval: int = typer.Option(300, "--interval", "-i", help="Interval between scans in seconds"),
+    webhook: Optional[str] = typer.Option(None, "--webhook", "-w", help="URL to POST drift alerts to"),
+    timeout: int = typer.Option(1000, "--timeout", "-t", help="Timeout per host in ms"),
+):
+    """Run discovery continuously and alert on network drift."""
+    console.print(f"[bold blue]Starting NetPulse Daemon Mode for {target}[/bold blue]")
+    console.print(f"Interval: {interval}s | Webhook: {'Enabled' if webhook else 'Disabled'}")
+    
+    service = DiscoveryService()
+    drift_service = DriftService()
+    previous_scan: Optional[DiscoveryResult] = None
+    
+    try:
+        while True:
+            start_time = time.time()
+            scan_result = asyncio.run(service.discover_network(target, [DiscoveryMethod.ARP], timeout_ms=timeout))
+            
+            if previous_scan:
+                drift = drift_service.calculate_drift(scan_result, previous_scan)
+                has_drift = len(drift.joined) > 0 or len(drift.left) > 0 or len(drift.modified) > 0
+                
+                if has_drift:
+                    msg = f"[bold red]DRIFT DETECTED![/bold red] Joined: {len(drift.joined)}, Left: {len(drift.left)}, Modified: {len(drift.modified)}"
+                    console.print(msg)
+                    
+                    if webhook:
+                        try:
+                            req = urllib.request.Request(
+                                webhook, 
+                                data=drift.model_dump_json().encode('utf-8'),
+                                headers={'Content-Type': 'application/json'}
+                            )
+                            urllib.request.urlopen(req, timeout=5)
+                            console.print("[green]Webhook successfully triggered[/green]")
+                        except Exception as e:
+                            console.print(f"[yellow]Failed to trigger webhook: {e}[/yellow]")
+                else:
+                    console.print(f"[dim]Scan complete. No topological drift detected. ({len(scan_result.devices)} active hosts)[/dim]")
+            else:
+                console.print(f"[green]Baseline scan complete. {len(scan_result.devices)} hosts discovered. Watching for changes...[/green]")
+                
+            previous_scan = scan_result
+            
+            # Sleep until next interval
+            elapsed = time.time() - start_time
+            sleep_time = max(0.1, interval - elapsed)
+            time.sleep(sleep_time)
+            
+    except KeyboardInterrupt:
+        console.print("[yellow]Shutting down watch daemon...[/yellow]")
+
+@app.command(name="generate-inventory")
+def generate_inventory(
+    target: str = typer.Argument(..., help="Target CIDR network"),
+    output: str = typer.Option("hosts.yaml", "--output", "-o", help="Output inventory file path"),
+    format: str = typer.Option("ansible", "--format", "-f", help="Format: 'ansible'"),
+    timeout: int = typer.Option(1000, "--timeout", "-t"),
+):
+    """Generate an Infrastructure-as-Code inventory (e.g. Ansible) from a live network scan."""
+    with console.status(f"Scanning {target} to generate inventory..."):
+        service = DiscoveryService()
+        result = asyncio.run(service.discover_network(target, [DiscoveryMethod.ARP], timeout_ms=timeout))
+        
+    out_path = Path(output)
+    
+    if format.lower() == "ansible":
+        hosts_dict = {}
+        for device in result.devices:
+            hosts_dict[str(device.ip)] = {
+                "mac": device.mac,
+                "vendor": device.vendor,
+                "rtt_ms": device.rtt_ms
+            }
+            
+        ansible_inv = {
+            "all": {
+                "hosts": hosts_dict
+            }
+        }
+        
+        out_path.write_text(yaml.dump(ansible_inv, sort_keys=False))
+        console.print(f"[green]Successfully generated Ansible inventory with {len(result.devices)} hosts at {output}[/green]")
+    else:
+        console.print(f"[red]Unsupported inventory format: {format}[/red]")
+        raise typer.Exit(1)
 
 if __name__ == "__main__":
     app()

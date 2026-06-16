@@ -47,6 +47,12 @@ sudo netpulse-discovery scan 192.168.1.0/24 --output results.txt
 
 # Calculate Network Drift from two exported JSON files (No sudo required)
 netpulse-discovery drift old_results.json results.json --output drift_report.yaml
+
+# Run Continuous Daemon Mode with Webhook Alerting
+sudo netpulse-discovery watch 192.168.1.0/24 --interval 300 --webhook https://hooks.slack.com/services/T000/B000/XXX
+
+# Generate an Ansible Infrastructure-as-Code Inventory from a live scan
+sudo netpulse-discovery generate-inventory 192.168.1.0/24 --format ansible --output hosts.yaml
 ```
 
 ### As a Standalone REST API
