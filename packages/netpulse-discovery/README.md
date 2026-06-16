@@ -12,7 +12,11 @@
 
 ## 🚀 Key Features
 
-- **Blazing Fast Scans:** Leverages `libpcap` and raw sockets in Rust to execute ARP and ICMP sweeps orders of magnitude faster than standard Python libraries.
+### High-Performance Networking (Rust Core)
+NetPulse operates at near wire-speed, utilizing a custom Rust core (`_engine`) layered with PyO3. It broadcasts custom Layer 2 ARP frames and Layer 3 ICMP Echo sweeps using raw datalink sockets. Features include OS Fingerprinting via TCP banners and TTL extraction, native Traceroutes, and Passive Topology Sniffing (CDP/LLDP).
+
+### Cloud Native & Developer Ecosystem
+Ready for modern infrastructure! Spin up the API daemon with `netpulse-discovery serve` to instantly access a full REST API, a Strawberry **GraphQL** interface (`/graphql`) for complex topological querying, and a **Prometheus Metrics** exporter (`/metrics`) built right in. You can also inject real-time Python plugins directly into the discovery engine.
 - **Asynchronous Port Scanning:** Native `asyncio` TCP connect scanner that can check hundreds of ports across multiple devices concurrently.
 - **Drift Detection:** Built-in intelligence to compare historical scans and calculate exact topological drift (e.g., "Host 192.168.1.5 went offline").
 - **MAC Vendor Resolution:** Automatically translates hardware MAC addresses into human-readable manufacturer names.

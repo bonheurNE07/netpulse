@@ -76,15 +76,17 @@ sudo netpulse-discovery sniff eth0 --duration 60 --output topology.json
 
 ### Standalone API Server
 
-To spin up a standalone REST API microservice:
+To spin up a standalone REST/GraphQL API microservice:
 
 ```bash
-netpulse-discovery serve --host 127.0.0.1 --port 8000
+sudo netpulse-discovery serve --host 0.0.0.0 --port 8000
 ```
-You can then POST to:
-- `http://127.0.0.1:8000/discovery/scan` with payload `{"target": "192.168.1.0/24"}`
-- `http://127.0.0.1:8000/discovery/drift/compare` with payload `{"scan_old": {...}, "scan_new": {...}}`
-- `http://127.0.0.1:8000/discovery/drift/scan` with payload `{"target": "192.168.1.0/24", "scan_old": {...}}`
+
+#### Available Endpoints:
+- `POST /discovery/scan`: Trigger an on-demand REST scan
+- `POST /discovery/drift/scan`: Scan and compare against a baseline
+- `POST /graphql`: Access the Strawberry GraphQL nested querying endpoint
+- `GET /metrics`: Scrape real-time Prometheus metrics (host counts, RTT averages)
 
 This returns a raw, structured JSON output containing the discovered devices, their MAC addresses, vendors, and RTT (Round Trip Time).
 

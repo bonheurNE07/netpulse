@@ -2,7 +2,7 @@ import asyncio
 import ipaddress
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Callable
 
 from netpulse.discovery.models.device import Device, DeviceStatus
 from netpulse.discovery.models.discovery import DiscoveryResult, DiscoveryMethod
@@ -25,7 +25,8 @@ class DiscoveryService:
         methods: Optional[List[DiscoveryMethod]] = None,
         timeout_ms: int = 1000,
         interface: Optional[str] = None,
-        ports: Optional[List[int]] = None
+        ports: Optional[List[int]] = None,
+        plugins: Optional[List[Callable]] = None
     ) -> DiscoveryResult:
         """
         Executes a network discovery scan across the target network.
@@ -36,6 +37,7 @@ class DiscoveryService:
             timeout_ms: Timeout in milliseconds for the scan
             interface: Network interface to scan on
             ports: Optional list of TCP ports to scan on active hosts
+            plugins: Optional list of callback functions to process each device
             
         Returns:
             DiscoveryResult containing the scan metadata and discovered devices
@@ -114,6 +116,15 @@ class DiscoveryService:
                     rtt_ms=raw_device.get("rtt_ms"),
                     status=raw_device.get("status", DeviceStatus.UNKNOWN)
                 )
+
+                # Execute plugins synchronously
+                if plugins:
+                    for plugin in plugins:
+                        try:
+                            plugin(device)
+                        except Exception as e:
+                            logger.error(f"Plugin execution failed for {ip}: {e}")
+
                 devices.append(device)
                 seen_ips.add(ip)
             except Exception as e:
