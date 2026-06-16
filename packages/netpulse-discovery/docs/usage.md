@@ -12,12 +12,50 @@ export NETPULSE_MOCK=1
 ```
 
 ## 1. Standalone CLI
+> [!IMPORTANT]
+> **Multiplatform Execution Requirements:**
+> - **Linux / macOS:** You must prefix your commands with `sudo` to grant raw socket permissions.
+> - **Windows:** You must run your commands inside an **Administrator Command Prompt** or Administrator PowerShell session.
+
 Run a basic network scan directly from the terminal:
 
 ```bash
-# Scan a local /24 subnet
-sudo uv run netpulse-discovery scan 192.168.1.0/24 --timeout 500
+# Linux / macOS
+sudo netpulse-discovery scan 192.168.1.0/24
+
+# Windows (Run in Admin Prompt)
+netpulse-discovery scan 192.168.1.0/24
 ```
+
+### Exporting Results
+
+You can export the discovery scan directly to a file format of your choice (`.json`, `.yaml`, or `.txt`):
+
+```bash
+# Example for Linux/macOS
+sudo netpulse-discovery scan 192.168.1.0/24 --output scan_report.json
+```
+
+### Stateless Drift Analysis
+
+You can compute topological network drift locally by supplying two JSON scan exports. This command does not require elevated privileges since it only parses files:
+
+```bash
+netpulse-discovery drift old_scan.json new_scan.json --output drift_report.yaml
+```
+
+### Standalone API Server
+
+To spin up a standalone REST API microservice:
+
+```bash
+netpulse-discovery serve --host 127.0.0.1 --port 8000
+```
+You can then POST to:
+- `http://127.0.0.1:8000/discovery/scan` with payload `{"target": "192.168.1.0/24"}`
+- `http://127.0.0.1:8000/discovery/drift/compare` with payload `{"scan_old": {...}, "scan_new": {...}}`
+- `http://127.0.0.1:8000/discovery/drift/scan` with payload `{"target": "192.168.1.0/24", "scan_old": {...}}`
+
 This returns a raw, structured JSON output containing the discovered devices, their MAC addresses, vendors, and RTT (Round Trip Time).
 
 ## 2. Python Library

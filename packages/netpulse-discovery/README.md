@@ -29,13 +29,33 @@ pip install netpulse-discovery
 ## ⚡ Quickstart
 
 ### As a CLI Tool
+The standalone CLI returns structured JSON output perfect for piping into `jq` or other tools. You can also export directly to files!
 
-The standalone CLI returns structured JSON output perfect for piping into `jq` or other tools.
+> [!IMPORTANT]
+> **Multiplatform Execution:** Low-level network scanning requires elevated privileges.
+> - **Linux / macOS:** Prefix your commands with `sudo`
+> - **Windows:** Open an **Administrator Command Prompt** or PowerShell session to execute.
 
 ```bash
-# Note: Raw sockets require elevated privileges
-sudo uv run netpulse-discovery scan 192.168.1.0/24 --timeout 500
+# Scan a network
+sudo netpulse-discovery scan 192.168.1.0/24 --timeout 500
+
+# Export results directly to a file
+sudo netpulse-discovery scan 192.168.1.0/24 --output results.json
+sudo netpulse-discovery scan 192.168.1.0/24 --output results.yaml
+sudo netpulse-discovery scan 192.168.1.0/24 --output results.txt
+
+# Calculate Network Drift from two exported JSON files (No sudo required)
+netpulse-discovery drift old_results.json results.json --output drift_report.yaml
 ```
+
+### As a Standalone REST API
+You can spin up a dedicated, hyper-fast FastAPI server instantly:
+
+```bash
+netpulse-discovery serve --port 8000
+```
+Then send requests to `http://localhost:8000/discovery/scan` or `http://localhost:8000/discovery/drift/compare`.
 
 ### As a Python Library
 
