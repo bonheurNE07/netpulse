@@ -25,6 +25,13 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Install Npcap SDK (Windows Only)
+        if: runner.os == 'Windows'
+        run: |
+          Invoke-WebRequest -Uri "https://npcap.com/dist/npcap-sdk-1.13.zip" -OutFile "npcap-sdk.zip"
+          Expand-Archive -Path "npcap-sdk.zip" -DestinationPath "C:\npcap-sdk"
+          echo "LIB=C:\npcap-sdk\Lib\x64;$env:LIB" >> $env:GITHUB_ENV
+
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
