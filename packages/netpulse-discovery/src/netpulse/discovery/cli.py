@@ -28,7 +28,7 @@ def scan(
     # Export if requested
     if output:
         out_path = Path(output)
-        data = result.model_dump()
+        data = result.model_dump(mode="json")
         
         if out_path.suffix == ".json":
             out_path.write_text(json.dumps(data, indent=2))
@@ -75,7 +75,7 @@ def drift(
         
     if output:
         out_path = Path(output)
-        data = result.model_dump()
+        data = result.model_dump(mode="json")
         
         if out_path.suffix == ".json":
             out_path.write_text(json.dumps(data, indent=2))
