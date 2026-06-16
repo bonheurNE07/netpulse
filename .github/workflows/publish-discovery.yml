@@ -3,18 +3,18 @@ name: Publish netpulse-discovery to PyPI
 on:
   push:
     tags:
-      # This workflow will only run when you push a tag like "netpulse-discovery-v0.1.0"
       - 'netpulse-discovery-v*'
 
 jobs:
-  build-and-publish:
-    name: Build and publish to PyPI
-    runs-on: ubuntu-latest
-    
+  build-wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+      
       - name: Install uv
         uses: astral-sh/setup-uv@v2
         with:
@@ -23,19 +23,55 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version-file: "pyproject.toml"
+          python-version: '3.10'
 
-      - name: Install dependencies
-        run: uv sync
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist --manifest-path packages/netpulse-discovery/rust/Cargo.toml
 
-      - name: Run Tests
-        run: NETPULSE_MOCK=1 uv run pytest packages/netpulse-discovery/tests/
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist
 
-      - name: Build netpulse-discovery package
-        run: uv build packages/netpulse-discovery
+  sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist --manifest-path packages/netpulse-discovery/rust/Cargo.toml
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist
+
+  publish:
+    name: Publish to PyPI
+    needs: [build-wheels, sdist]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+          
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
 
       - name: Publish to PyPI
-        run: uv publish
-        env:
-          # Ensure you have set PYPI_TOKEN in your GitHub Repository Secrets
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}

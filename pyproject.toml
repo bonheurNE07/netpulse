@@ -36,7 +36,6 @@ netpulse-core = { workspace = true }
 netpulse-subnet = { workspace = true }
 netpulse-ssh = { workspace = true }
 netpulse-discovery = { workspace = true }
-netpulse-rust = { workspace = true }
 
 
 [tool.hatch.build.targets.wheel]

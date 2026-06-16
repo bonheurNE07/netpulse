@@ -1,0 +1,16 @@
+[package]
+name = "netpulse-discovery-engine"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "_engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py38"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+pnet = "0.35.0"
+socket2 = { version = "0.5.5", features = ["all"] }
+ipnet = "2.9.0"

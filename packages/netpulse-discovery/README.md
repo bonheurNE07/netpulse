@@ -20,10 +20,10 @@
 
 ## 📦 Installation
 
-Since NetPulse Discovery is part of the NetPulse workspace, it relies on `uv` for dependency management and workspace resolution.
+NetPulse Discovery is distributed as a pre-compiled binary wheel. It is entirely self-sufficient and requires no Rust compiler or external dependencies to install!
 
 ```bash
-uv sync
+pip install netpulse-discovery
 ```
 
 ## ⚡ Quickstart

@@ -8,21 +8,21 @@ _force_mock = os.environ.get("NETPULSE_MOCK") == "1"
 # This will be imported from the compiled Rust extension
 try:
     if _force_mock:
-        netpulse_rust = None
+        _engine = None
         logging.info("NetPulse engine running in FORCED MOCK mode via environment variable.")
     else:
-        import netpulse_rust
+        from netpulse.discovery import _engine
 except ImportError:
     # Fallback for development/testing without compiled binary
-    netpulse_rust = None
-    logging.warning("netpulse_rust module not found. Engine is running in mock mode.")
+    _engine = None
+    logging.warning("_engine module not found. Engine is running in mock mode.")
 
 def scan_arp(target: str, timeout_ms: int = 1000, interface: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Exposes the Rust ARP scanning capability to the Core layer.
     """
-    if netpulse_rust:
-        return netpulse_rust.scan_arp(target, timeout_ms, interface)
+    if _engine:
+        return _engine.scan_arp(target, timeout_ms, interface)
     
     # Mock fallback for environment without Rust compiled or forced mock mode
     return [
@@ -36,8 +36,8 @@ def scan_icmp(target: str, timeout_ms: int = 1000, concurrency: int = 100) -> Li
     """
     Exposes the Rust ICMP scanning capability to the Core layer.
     """
-    if netpulse_rust:
-        return netpulse_rust.scan_icmp(target, timeout_ms, concurrency)
+    if _engine:
+        return _engine.scan_icmp(target, timeout_ms, concurrency)
     
     # Mock fallback for environment without Rust compiled or forced mock mode
     return [
