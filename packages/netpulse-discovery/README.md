@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="NetPulse Discovery Logo" width="300"/>
+  <img src="https://raw.githubusercontent.com/bonheurNE07/netpulse/main/packages/netpulse-discovery/docs/assets/logo.png" alt="NetPulse Discovery Logo" width="300"/>
 </p>
 
 # NetPulse Discovery
