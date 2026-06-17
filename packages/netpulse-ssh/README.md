@@ -26,6 +26,8 @@
 - **Legacy Equipment Healing**: Automatically detects strict OpenSSH cipher drops and seamlessly falls back to legacy algorithms (e.g., `diffie-hellman-group1-sha1`, `3des-cbc`) frequently required for older Cisco or Juniper gear.
 - **Smart Privilege Escalation**: Natively supports Cisco `enable` mode privilege escalation without breaking automation flows.
 - **Pagination Suppression**: Automatically injects `terminal length 0` before command execution to bypass interactive `--More--` prompts.
+- **Automated Deployment Engine (Playbooks)**: Decouple scripts from targets using YAML Inventory and Playbook definitions. Execute sequential, multi-step configurations effortlessly.
+- **Interactive "Expect" Engine**: Automate interactive prompts (e.g. `Do you want to continue? [Y/n]`) by programming standard output regex triggers directly in your YAML Playbooks.
 - **REST API Enabled**: Run the built-in FastAPI uvicorn wrapper to serve concurrent execution logic dynamically to web dashboards or automation scripts.
 
 ## 🚀 Quickstart
@@ -40,8 +42,15 @@ pip install netpulse-ssh
 
 ### CLI Usage
 
+**Automated Deployment (Playbooks)**
+Execute a sequential YAML playbook across a grouped YAML inventory:
+
+```bash
+netpulse-ssh deploy --inventory hosts.yaml --script deploy.yaml
+```
+
 **Concurrent Execution**
-Execute a command across multiple devices concurrently and get a beautiful, structured table summary:
+Execute a single command across multiple devices concurrently:
 
 ```bash
 netpulse-ssh execute 192.168.1.5 10.0.0.1 -c "show ip interface brief" -u admin -p password
@@ -85,6 +94,7 @@ if __name__ == "__main__":
 
 Detailed documentation is available in the `docs/` directory:
 - 🗺️ [**Usage Guide**](docs/usage.md) - Deep dive into CLI and REST API examples.
+- 📜 [**Playbooks & Inventory**](docs/playbooks.md) - Learn how to build Automated Deployment sequences.
 - 🏗️ [**Architecture**](docs/architecture.md) - Understand the asynchronous execution engine and legacy fallbacks.
 - 🧠 [**Design Decisions**](docs/design.md) - Read about the decoupled persistence approach.
 - 🧪 [**Contributing**](docs/contributing.md) - The development onboarding guide.

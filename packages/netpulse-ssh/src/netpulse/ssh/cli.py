@@ -4,8 +4,9 @@ from typing import List, Optional
 from rich.console import Console
 from rich.table import Table
 from rich import print as rprint
+import yaml
 
-from netpulse.ssh.models import SshHostConfig, SshStatus
+from netpulse.ssh.models import SshHostConfig, SshStatus, Playbook, Inventory
 from netpulse.ssh.runner import SshRunnerService
 
 app = typer.Typer(help="NetPulse SSH: High-speed concurrent command runner.", no_args_is_help=True)
@@ -90,6 +91,73 @@ def shell(
         await runner.interactive_shell(config, term_type=term_type)
 
     asyncio.run(run_shell())
+
+@app.command("deploy")
+def deploy(
+    inventory_file: str = typer.Option(..., "--inventory", "-i", help="YAML inventory file."),
+    script_file: str = typer.Option(..., "--script", "-s", help="YAML playbook script file.")
+):
+    """
+    Automated Deployment Engine: Execute a playbook sequence across an inventory.
+    """
+    # 1. Parse playbook
+    try:
+        with open(script_file, 'r') as f:
+            playbook_data = yaml.safe_load(f)
+        playbook = Playbook(**playbook_data)
+    except Exception as e:
+        rprint(f"[bold red]Failed to parse playbook script '{script_file}':[/bold red] {e}")
+        raise typer.Exit(1)
+
+    # 2. Parse inventory
+    try:
+        with open(inventory_file, 'r') as f:
+            inventory_data = yaml.safe_load(f)
+        inventory = Inventory(**inventory_data)
+    except Exception as e:
+        rprint(f"[bold red]Failed to parse inventory file '{inventory_file}':[/bold red] {e}")
+        raise typer.Exit(1)
+
+    # 3. Build SshHostConfig list
+    hosts_config = []
+    for group_name, group in inventory.groups.items():
+        for host in group.hosts:
+            hosts_config.append(
+                SshHostConfig(
+                    ip=host.ip,
+                    port=host.port if host.port is not None else 22,
+                    username=host.username if host.username is not None else "root", # Defaulting to root if not provided or handle missing
+                    password=host.password,
+                    enable_password=host.enable_password,
+                    ssh_key=host.ssh_key,
+                )
+            )
+
+    async def run():
+        runner = SshRunnerService()
+        with console.status(f"[bold cyan]Deploying playbook '{playbook.name}' across {len(hosts_config)} hosts...", spinner="dots"):
+            audit = await runner.execute_playbook_concurrently(hosts_config, playbook)
+        
+        table = Table(title=f"Deployment Summary: '{playbook.name}'")
+        table.add_column("Host IP", justify="left", style="cyan", no_wrap=True)
+        table.add_column("Status", justify="center")
+        table.add_column("Latency (ms)", justify="right", style="magenta")
+        table.add_column("Output / Error", justify="left", style="green")
+
+        for res in audit.results:
+            if res.status == SshStatus.SUCCESS:
+                status_str = "[bold green]SUCCESS[/bold green]"
+                output = res.stdout.strip()[:150] + ("..." if len(res.stdout) > 150 else "") if res.stdout else "No output"
+            else:
+                status_str = "[bold red]FAILED[/bold red]"
+                output = f"[red]{res.error_message}[/red]"
+
+            table.add_row(res.ip, status_str, f"{res.latency_ms}ms", output)
+
+        console.print(table)
+        rprint(f"[bold]Total Success:[/bold] {audit.success_count} | [bold]Total Failed:[/bold] {audit.failed_count}")
+
+    asyncio.run(run())
 
 if __name__ == "__main__":
     app()

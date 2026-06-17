@@ -7,7 +7,7 @@ import asyncssh
 from typing import List, Optional, Tuple
 from datetime import datetime, timezone
 
-from netpulse.ssh.models import SshHostConfig, SshHostResult, SshStatus, SshExecutionAudit
+from netpulse.ssh.models import SshHostConfig, SshHostResult, SshStatus, SshExecutionAudit, Playbook
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,9 @@ class SmartSshClient:
             "password": password,
             "login_timeout": timeout,
         }
+
+        if config.ssh_key:
+            connect_opts["client_keys"] = [config.ssh_key]
 
         # Bypass host key checking using our custom validator
         if config.ignore_host_keys:
@@ -172,6 +175,9 @@ class SmartSshClient:
             "password": password,
             "login_timeout": timeout,
         }
+
+        if config.ssh_key:
+            connect_opts["client_keys"] = [config.ssh_key]
 
         if config.ignore_host_keys:
             connect_opts["client_factory"] = TrustingSSHClient
@@ -309,6 +315,127 @@ class SmartSshClient:
 
             return stdout_data, stderr_data
 
+    @classmethod
+    async def connect_and_playbook(cls, config: SshHostConfig, playbook: Playbook) -> SshHostResult:
+        """
+        Resiliently connects to a host via SSH and sequentially executes
+        a series of playbook tasks with full Expect engine support.
+        """
+        ip = config.ip
+        port = config.port
+        username = config.username
+        password = config.password
+        timeout = config.timeout_seconds
+
+        start_time = time.perf_counter()
+        
+        connect_opts = {
+            "host": ip,
+            "port": port,
+            "username": username,
+            "password": password,
+            "login_timeout": timeout,
+        }
+
+        if config.ssh_key:
+            connect_opts["client_keys"] = [config.ssh_key]
+
+        if config.ignore_host_keys:
+            connect_opts["client_factory"] = TrustingSSHClient
+            connect_opts["known_hosts"] = None
+
+        conn = None
+        negotiated_kex = None
+        negotiated_cipher = None
+        used_fallback = False
+
+        try:
+            try:
+                conn = await asyncssh.connect(**connect_opts)
+            except (asyncssh.misc.ProtocolError, asyncssh.misc.DisconnectError) as e:
+                if config.auto_negotiate:
+                    logger.warning(
+                        f"Handshake failed with {ip}:{port} ({e}). Retrying with legacy cryptographic support..."
+                    )
+                    used_fallback = True
+                    legacy_opts = {
+                        **connect_opts,
+                        "kex_algs": ["diffie-hellman-group1-sha1", "diffie-hellman-group14-sha1", "diffie-hellman-group-exchange-sha1", "diffie-hellman-group-exchange-sha256", "ecdh-sha2-nistp256", "ecdh-sha2-nistp384", "ecdh-sha2-nistp521"],
+                        "encryption_algs": ["aes128-cbc", "aes192-cbc", "aes256-cbc", "3des-cbc", "aes128-ctr", "aes192-ctr", "aes256-ctr"],
+                        "signature_algs": ["ssh-rsa", "ssh-dss", "ecdsa-sha2-nistp256", "ssh-ed25519"],
+                    }
+                    conn = await asyncssh.connect(**legacy_opts)
+                else:
+                    raise e
+
+            negotiated_kex = conn.get_extra_info("kex_alg")
+            negotiated_cipher = conn.get_extra_info("cipher_alg")
+
+            full_stdout = ""
+            # Sequentially run tasks
+            for task in playbook.tasks:
+                full_stdout += f"\\n--- TASK: {task.name} ---\\n"
+                
+                try:
+                    # 1. We attempt standard 'exec' channel requests.
+                    # This cleanly isolates commands and provides EOF signals.
+                    async with conn.create_process(task.command, term_type='vt100') as proc:
+                        buf = ""
+                        task_timeout = task.timeout or 120 # Default 2 minutes per task
+                        
+                        while True:
+                            # Read in small chunks to process output as fast as possible for the Expect engine
+                            try:
+                                chunk = await asyncio.wait_for(proc.stdout.read(1024), timeout=task_timeout)
+                                if not chunk: # EOF
+                                    break
+                                buf += chunk
+                                full_stdout += chunk
+                                
+                                if task.expect:
+                                    for exp in task.expect:
+                                        if re.search(exp.prompt, buf):
+                                            proc.stdin.write(exp.send)
+                                            buf = "" # Reset buffer after send to avoid repeated matching
+                                            break
+                            except asyncio.TimeoutError:
+                                full_stdout += f"\\n[ERROR: Timeout waiting for task execution after {task_timeout}s]"
+                                break
+
+                except asyncssh.misc.ChannelOpenError as coe:
+                    # Some legacy/network devices reject 'exec' channels. 
+                    # For a robust playbook engine, we log and abort the playbook.
+                    full_stdout += f"\\n[ERROR: Host rejected command execution channel. Host might require interactive shell only. {coe}]"
+                    raise coe
+
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+
+            return SshHostResult(
+                ip=ip,
+                status=SshStatus.SUCCESS,
+                stdout=full_stdout.strip(),
+                stderr=None,
+                latency_ms=round(latency_ms, 2),
+                negotiated_kex=negotiated_kex,
+                negotiated_cipher=negotiated_cipher
+            )
+
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+            error_msg = str(e)
+            if used_fallback:
+                error_msg = f"Legacy Handshake Fail: {error_msg}"
+            
+            return SshHostResult(
+                ip=ip,
+                status=SshStatus.FAILED,
+                latency_ms=round(latency_ms, 2),
+                error_message=error_msg
+            )
+        finally:
+            if conn:
+                conn.close()
+                await conn.wait_closed()
 
 class SshRunnerService:
     """
@@ -358,9 +485,42 @@ class SshRunnerService:
 
         return audit
 
+    async def execute_playbook_concurrently(self, hosts: List[SshHostConfig], playbook: Playbook) -> SshExecutionAudit:
+        """
+        Concurrently executes a playbook sequence across multiple host configurations.
+        """
+        if not hosts:
+            return SshExecutionAudit(
+                command=f"playbook:{playbook.name}",
+                targets=[],
+                success_count=0,
+                failed_count=0,
+                results=[],
+                executed_at=datetime.now(timezone.utc)
+            )
+
+        tasks = [SmartSshClient.connect_and_playbook(cfg, playbook) for cfg in hosts]
+        results: List[SshHostResult] = await asyncio.gather(*tasks)
+
+        success_count = sum(1 for res in results if res.status == SshStatus.SUCCESS)
+        failed_count = sum(1 for res in results if res.status == SshStatus.FAILED)
+        targets = [cfg.ip for cfg in hosts]
+
+        audit = SshExecutionAudit(
+            command=f"playbook:{playbook.name}",
+            targets=targets,
+            success_count=success_count,
+            failed_count=failed_count,
+            results=results,
+            executed_at=datetime.now(timezone.utc)
+        )
+
+        return audit
+
     async def interactive_shell(self, config: SshHostConfig, term_type: str = "xterm-256color") -> None:
         """
         Opens a fully interactive SSH shell natively over the terminal.
         """
         client = SmartSshClient()
         await client.connect_and_shell(config, term_type=term_type)
+
