@@ -47,7 +47,7 @@ class Query:
                 vendor=d.vendor,
                 os_guess=d.os_guess,
                 rtt_ms=d.rtt_ms,
-                status=d.status.value
+                status=d.status.value if hasattr(d.status, 'value') else str(d.status)
             )
             # Override the field method slightly for simplicity in this MVP
             dt.services = lambda s_json=services_json: s_json
