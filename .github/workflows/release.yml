@@ -1,11 +1,9 @@
 name: Build and Publish Wheels
 
 on:
-  release:
-    types: [published]
   push:
     tags:
-      - 'v*'
+      - 'netpulse-discovery-v*'
 
 jobs:
   build_wheels:
@@ -59,6 +57,7 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
           sccache: 'true'
+          working-directory: packages/netpulse-discovery
         env:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
 
@@ -78,6 +77,7 @@ jobs:
         with:
           command: sdist
           args: --out dist
+          working-directory: packages/netpulse-discovery
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
