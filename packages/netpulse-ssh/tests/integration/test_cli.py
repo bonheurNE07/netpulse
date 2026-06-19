@@ -64,3 +64,65 @@ def test_cli_execute_ssh_command_failure():
         assert "FAILED" in result.stdout
         assert "Authentication failed" in result.stdout
         assert "Total Failed: 1" in result.stdout
+
+def test_cli_scp_push_success():
+    """Verify that the scp push command invokes the runner and prints results successfully."""
+    mock_audit = SshExecutionAudit(
+        command="scp push ./firmware.bin -> /flash/",
+        targets=["10.0.0.5"],
+        success_count=1,
+        failed_count=0,
+        results=[
+            SshHostResult(
+                ip="10.0.0.5",
+                status=SshStatus.SUCCESS,
+                stdout="Successfully pushed ./firmware.bin to /flash/",
+                latency_ms=120.5,
+                negotiated_kex="curve25519-sha256",
+                negotiated_cipher="aes256-gcm@openssh.com"
+            )
+        ]
+    )
+    
+    with patch("netpulse.ssh.cli.SshRunnerService.execute_scp_push_concurrently", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = mock_audit
+        
+        # In cli.py, the command is attached to scp_app which is attached as 'scp' to the main app.
+        # So we invoke app with ["scp", "push", ...]
+        result = runner.invoke(app, ["scp", "push", "10.0.0.5", "--src", "./firmware.bin", "--dest", "/flash/", "-u", "admin", "-p", "password"])
+        
+        assert result.exit_code == 0
+        assert "SCP Push Summary" in result.stdout
+        assert "10.0.0.5" in result.stdout
+        assert "SUCCESS" in result.stdout
+        assert "Successfully pushed" in result.stdout
+
+def test_cli_scp_pull_success():
+    """Verify that the scp pull command invokes the runner and prints results successfully."""
+    mock_audit = SshExecutionAudit(
+        command="scp pull /etc/nginx/nginx.conf -> ./backups",
+        targets=["10.0.0.6"],
+        success_count=1,
+        failed_count=0,
+        results=[
+            SshHostResult(
+                ip="10.0.0.6",
+                status=SshStatus.SUCCESS,
+                stdout="Successfully pulled /etc/nginx/nginx.conf to ./backups/10.0.0.6/nginx.conf",
+                latency_ms=45.2,
+                negotiated_kex="curve25519-sha256",
+                negotiated_cipher="aes256-gcm@openssh.com"
+            )
+        ]
+    )
+    
+    with patch("netpulse.ssh.cli.SshRunnerService.execute_scp_pull_concurrently", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = mock_audit
+        
+        result = runner.invoke(app, ["scp", "pull", "10.0.0.6", "--src", "/etc/nginx/nginx.conf", "--dest", "./backups", "-u", "admin", "-p", "password"])
+        
+        assert result.exit_code == 0
+        assert "SCP Pull Summary" in result.stdout
+        assert "10.0.0.6" in result.stdout
+        assert "SUCCESS" in result.stdout
+        assert "Successfully pulled" in result.stdout

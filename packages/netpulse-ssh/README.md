@@ -22,6 +22,7 @@
 ## ✨ Features
 
 - **Massive Concurrency**: Scales horizontally using `asyncio` to execute commands across hundreds of targets simultaneously, dramatically reducing execution time.
+- **Concurrent File Management**: Natively utilizes SCP/SFTP protocols to push large firmware payloads or pull configuration backups from 100+ devices simultaneously into IP-segregated folders.
 - **Pure Python PTY Emulator**: Ships with a fully self-contained, cross-platform Pseudo-Terminal (PTY) emulator. Features native raw keystroke capturing (including Arrow keys and Tab-completion) on Windows, entirely independent of the underlying OS SSH binaries.
 - **Legacy Equipment Healing**: Automatically detects strict OpenSSH cipher drops and seamlessly falls back to legacy algorithms (e.g., `diffie-hellman-group1-sha1`, `3des-cbc`) frequently required for older Cisco or Juniper gear.
 - **Smart Privilege Escalation**: Natively supports Cisco `enable` mode privilege escalation without breaking automation flows.
@@ -54,6 +55,17 @@ Execute a single command across multiple devices concurrently:
 
 ```bash
 netpulse-ssh execute 192.168.1.5 10.0.0.1 -c "show ip interface brief" -u admin -p password
+```
+
+**Concurrent File Management (SCP)**
+Push firmware payloads or pull configs across your entire network simultaneously:
+
+```bash
+# Mass Push Firmware
+netpulse-ssh scp push 192.168.1.5 10.0.0.1 --src ./firmware.bin --dest /flash/ -u admin -p password
+
+# Mass Pull Configurations (Auto-segregated into ./backups/<IP>/)
+netpulse-ssh scp pull 192.168.1.5 10.0.0.1 --src /etc/nginx/nginx.conf --dest ./backups/ -u admin -p password
 ```
 
 **Interactive Shell**

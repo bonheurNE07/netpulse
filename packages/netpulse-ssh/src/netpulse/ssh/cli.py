@@ -10,6 +10,9 @@ from netpulse.ssh.models import SshHostConfig, SshStatus, Playbook, Inventory
 from netpulse.ssh.runner import SshRunnerService
 
 app = typer.Typer(help="NetPulse SSH: High-speed concurrent command runner.", no_args_is_help=True)
+scp_app = typer.Typer(help="SCP file transfer commands.", no_args_is_help=True)
+app.add_typer(scp_app, name="scp")
+
 console = Console()
 
 @app.callback()
@@ -148,6 +151,100 @@ def deploy(
             if res.status == SshStatus.SUCCESS:
                 status_str = "[bold green]SUCCESS[/bold green]"
                 output = res.stdout.strip()[:150] + ("..." if len(res.stdout) > 150 else "") if res.stdout else "No output"
+            else:
+                status_str = "[bold red]FAILED[/bold red]"
+                output = f"[red]{res.error_message}[/red]"
+
+            table.add_row(res.ip, status_str, f"{res.latency_ms}ms", output)
+
+        console.print(table)
+        rprint(f"[bold]Total Success:[/bold] {audit.success_count} | [bold]Total Failed:[/bold] {audit.failed_count}")
+
+    asyncio.run(run())
+
+@scp_app.command("push")
+def scp_push(
+    hosts: List[str] = typer.Argument(..., help="List of IP addresses to target."),
+    src: str = typer.Option(..., "--src", help="Local source file path."),
+    dest: str = typer.Option(..., "--dest", help="Remote destination directory or file path."),
+    username: str = typer.Option(..., "--user", "-u", help="SSH Username.", prompt=True),
+    password: str = typer.Option("", "--pass", "-p", help="SSH Password.", hide_input=True, prompt="Password (leave empty if using keys)"),
+    port: int = typer.Option(22, "--port", help="SSH port."),
+):
+    """
+    Push a local file to multiple remote hosts concurrently using SCP.
+    """
+    hosts_config = [
+        SshHostConfig(
+            ip=ip,
+            port=port,
+            username=username,
+            password=password if password else None,
+        ) for ip in hosts
+    ]
+
+    async def run():
+        runner = SshRunnerService()
+        with console.status(f"[bold cyan]Pushing '{src}' to {len(hosts)} hosts...", spinner="dots"):
+            audit = await runner.execute_scp_push_concurrently(hosts_config, src, dest)
+        
+        table = Table(title=f"SCP Push Summary: '{src}' -> '{dest}'")
+        table.add_column("Host IP", justify="left", style="cyan", no_wrap=True)
+        table.add_column("Status", justify="center")
+        table.add_column("Latency (ms)", justify="right", style="magenta")
+        table.add_column("Output / Error", justify="left", style="green")
+
+        for res in audit.results:
+            if res.status == SshStatus.SUCCESS:
+                status_str = "[bold green]SUCCESS[/bold green]"
+                output = res.stdout.strip()[:100] + ("..." if len(res.stdout) > 100 else "") if res.stdout else "No output"
+            else:
+                status_str = "[bold red]FAILED[/bold red]"
+                output = f"[red]{res.error_message}[/red]"
+
+            table.add_row(res.ip, status_str, f"{res.latency_ms}ms", output)
+
+        console.print(table)
+        rprint(f"[bold]Total Success:[/bold] {audit.success_count} | [bold]Total Failed:[/bold] {audit.failed_count}")
+
+    asyncio.run(run())
+
+@scp_app.command("pull")
+def scp_pull(
+    hosts: List[str] = typer.Argument(..., help="List of IP addresses to target."),
+    src: str = typer.Option(..., "--src", help="Remote source file path."),
+    dest: str = typer.Option(..., "--dest", help="Local destination directory."),
+    username: str = typer.Option(..., "--user", "-u", help="SSH Username.", prompt=True),
+    password: str = typer.Option("", "--pass", "-p", help="SSH Password.", hide_input=True, prompt="Password (leave empty if using keys)"),
+    port: int = typer.Option(22, "--port", help="SSH port."),
+):
+    """
+    Pull a remote file from multiple hosts concurrently, saving into IP-segregated folders.
+    """
+    hosts_config = [
+        SshHostConfig(
+            ip=ip,
+            port=port,
+            username=username,
+            password=password if password else None,
+        ) for ip in hosts
+    ]
+
+    async def run():
+        runner = SshRunnerService()
+        with console.status(f"[bold cyan]Pulling '{src}' from {len(hosts)} hosts...", spinner="dots"):
+            audit = await runner.execute_scp_pull_concurrently(hosts_config, src, dest)
+        
+        table = Table(title=f"SCP Pull Summary: '{src}' -> '{dest}'")
+        table.add_column("Host IP", justify="left", style="cyan", no_wrap=True)
+        table.add_column("Status", justify="center")
+        table.add_column("Latency (ms)", justify="right", style="magenta")
+        table.add_column("Output / Error", justify="left", style="green")
+
+        for res in audit.results:
+            if res.status == SshStatus.SUCCESS:
+                status_str = "[bold green]SUCCESS[/bold green]"
+                output = res.stdout.strip()[:100] + ("..." if len(res.stdout) > 100 else "") if res.stdout else "No output"
             else:
                 status_str = "[bold red]FAILED[/bold red]"
                 output = f"[red]{res.error_message}[/red]"

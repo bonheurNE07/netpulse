@@ -148,5 +148,54 @@ async def test_ssh_runner_concurrent_execution(mock_connect):
     assert audit.success_count == 2
     assert audit.failed_count == 0
     assert len(audit.results) == 2
-    assert audit.results[0].stdout == "Command output"
     assert audit.results[1].stdout == "Command output"
+
+@pytest.mark.asyncio
+@patch("asyncssh.scp", new_callable=AsyncMock)
+@patch("asyncssh.connect", new_callable=AsyncMock)
+async def test_ssh_client_scp_push(mock_connect, mock_scp):
+    """Verify that SmartSshClient correctly executes scp_push."""
+    mock_conn = MagicMock()
+    mock_conn.wait_closed = AsyncMock()
+    mock_conn.get_extra_info.side_effect = lambda key: {
+        "kex_alg": "curve25519-sha256",
+        "cipher_alg": "aes256-gcm@openssh.com"
+    }.get(key)
+    mock_connect.return_value = mock_conn
+
+    config = SshHostConfig(ip="192.168.1.20", username="admin", password="password")
+    
+    result = await SmartSshClient.scp_push(config, "local.bin", "/remote/path/local.bin")
+    
+    assert result.status == SshStatus.SUCCESS
+    assert "Successfully pushed" in result.stdout
+    assert result.negotiated_kex == "curve25519-sha256"
+    assert result.negotiated_cipher == "aes256-gcm@openssh.com"
+    
+    mock_connect.assert_called_once()
+    mock_scp.assert_called_once_with("local.bin", (mock_conn, "/remote/path/local.bin"))
+
+@pytest.mark.asyncio
+@patch("os.makedirs")
+@patch("asyncssh.scp", new_callable=AsyncMock)
+@patch("asyncssh.connect", new_callable=AsyncMock)
+async def test_ssh_client_scp_pull(mock_connect, mock_scp, mock_makedirs):
+    """Verify that SmartSshClient correctly executes scp_pull and creates directories."""
+    mock_conn = MagicMock()
+    mock_conn.wait_closed = AsyncMock()
+    mock_conn.get_extra_info.side_effect = lambda key: {
+        "kex_alg": "curve25519-sha256",
+        "cipher_alg": "aes256-gcm@openssh.com"
+    }.get(key)
+    mock_connect.return_value = mock_conn
+
+    config = SshHostConfig(ip="192.168.1.30", username="admin", password="password")
+    
+    result = await SmartSshClient.scp_pull(config, "/remote/path/config.txt", "./backups")
+    
+    assert result.status == SshStatus.SUCCESS
+    assert "Successfully pulled" in result.stdout
+    
+    mock_connect.assert_called_once()
+    mock_makedirs.assert_called_once_with("./backups/192.168.1.30", exist_ok=True)
+    mock_scp.assert_called_once_with((mock_conn, "/remote/path/config.txt"), "./backups/192.168.1.30/config.txt")

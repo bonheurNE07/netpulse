@@ -14,6 +14,16 @@ To drop into a live interactive SSH shell to manually configure a specific targe
 netpulse-ssh shell 192.168.1.5 -u admin -p password
 ```
 
+To natively push a file to multiple remote hosts concurrently using SCP:
+```bash
+netpulse-ssh scp push 192.168.1.5 10.0.0.1 --src local.bin --dest /flash/ -u admin -p password
+```
+
+To natively pull a remote file from multiple hosts, automatically organizing them into IP-segregated folders (e.g., `./backups/192.168.1.5/nginx.conf`):
+```bash
+netpulse-ssh scp pull 192.168.1.5 10.0.0.1 --src /etc/nginx/nginx.conf --dest ./backups/ -u admin -p password
+```
+
 Options:
 - `-c, --command`: The SSH command to execute (for `execute`).
 - `-u, --user`: The SSH login username.

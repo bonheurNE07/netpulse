@@ -2,6 +2,7 @@ import asyncio
 import time
 import logging
 import sys 
+import os
 import re
 import asyncssh
 from typing import List, Optional, Tuple
@@ -437,6 +438,186 @@ class SmartSshClient:
                 conn.close()
                 await conn.wait_closed()
 
+    @classmethod
+    async def scp_push(cls, config: SshHostConfig, src: str, dest: str) -> SshHostResult:
+        """
+        Pushes a local file to the remote host using SCP.
+        """
+        ip = config.ip
+        port = config.port
+        username = config.username
+        password = config.password
+        timeout = config.timeout_seconds
+
+        start_time = time.perf_counter()
+        
+        connect_opts = {
+            "host": ip,
+            "port": port,
+            "username": username,
+            "password": password,
+            "login_timeout": timeout,
+        }
+
+        if config.ssh_key:
+            connect_opts["client_keys"] = [config.ssh_key]
+
+        if config.ignore_host_keys:
+            connect_opts["client_factory"] = TrustingSSHClient
+            connect_opts["known_hosts"] = None
+
+        conn = None
+        negotiated_kex = None
+        negotiated_cipher = None
+        used_fallback = False
+
+        try:
+            try:
+                conn = await asyncssh.connect(**connect_opts)
+            except (asyncssh.misc.ProtocolError, asyncssh.misc.DisconnectError) as e:
+                if config.auto_negotiate:
+                    logger.warning(
+                        f"Handshake failed with {ip}:{port} ({e}). Retrying with legacy cryptographic support..."
+                    )
+                    used_fallback = True
+                    legacy_opts = {
+                        **connect_opts,
+                        "kex_algs": ["diffie-hellman-group1-sha1", "diffie-hellman-group14-sha1", "diffie-hellman-group-exchange-sha1", "diffie-hellman-group-exchange-sha256", "ecdh-sha2-nistp256", "ecdh-sha2-nistp384", "ecdh-sha2-nistp521"],
+                        "encryption_algs": ["aes128-cbc", "aes192-cbc", "aes256-cbc", "3des-cbc", "aes128-ctr", "aes192-ctr", "aes256-ctr"],
+                        "signature_algs": ["ssh-rsa", "ssh-dss", "ecdsa-sha2-nistp256", "ssh-ed25519"],
+                    }
+                    conn = await asyncssh.connect(**legacy_opts)
+                else:
+                    raise e
+
+            negotiated_kex = conn.get_extra_info("kex_alg")
+            negotiated_cipher = conn.get_extra_info("cipher_alg")
+
+            # Execute SCP Push
+            await asyncssh.scp(src, (conn, dest))
+            
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+
+            return SshHostResult(
+                ip=ip,
+                status=SshStatus.SUCCESS,
+                stdout=f"Successfully pushed {src} to {dest}",
+                latency_ms=round(latency_ms, 2),
+                negotiated_kex=negotiated_kex,
+                negotiated_cipher=negotiated_cipher
+            )
+
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+            error_msg = str(e)
+            if used_fallback:
+                error_msg = f"Legacy Handshake Fail: {error_msg}"
+            
+            return SshHostResult(
+                ip=ip,
+                status=SshStatus.FAILED,
+                latency_ms=round(latency_ms, 2),
+                error_message=error_msg
+            )
+        finally:
+            if conn:
+                conn.close()
+                await conn.wait_closed()
+
+    @classmethod
+    async def scp_pull(cls, config: SshHostConfig, src: str, dest_dir: str) -> SshHostResult:
+        """
+        Pulls a remote file from the host using SCP, saving it into an IP-segregated subdirectory.
+        """
+        ip = config.ip
+        port = config.port
+        username = config.username
+        password = config.password
+        timeout = config.timeout_seconds
+
+        start_time = time.perf_counter()
+        
+        connect_opts = {
+            "host": ip,
+            "port": port,
+            "username": username,
+            "password": password,
+            "login_timeout": timeout,
+        }
+
+        if config.ssh_key:
+            connect_opts["client_keys"] = [config.ssh_key]
+
+        if config.ignore_host_keys:
+            connect_opts["client_factory"] = TrustingSSHClient
+            connect_opts["known_hosts"] = None
+
+        conn = None
+        negotiated_kex = None
+        negotiated_cipher = None
+        used_fallback = False
+
+        try:
+            try:
+                conn = await asyncssh.connect(**connect_opts)
+            except (asyncssh.misc.ProtocolError, asyncssh.misc.DisconnectError) as e:
+                if config.auto_negotiate:
+                    logger.warning(
+                        f"Handshake failed with {ip}:{port} ({e}). Retrying with legacy cryptographic support..."
+                    )
+                    used_fallback = True
+                    legacy_opts = {
+                        **connect_opts,
+                        "kex_algs": ["diffie-hellman-group1-sha1", "diffie-hellman-group14-sha1", "diffie-hellman-group-exchange-sha1", "diffie-hellman-group-exchange-sha256", "ecdh-sha2-nistp256", "ecdh-sha2-nistp384", "ecdh-sha2-nistp521"],
+                        "encryption_algs": ["aes128-cbc", "aes192-cbc", "aes256-cbc", "3des-cbc", "aes128-ctr", "aes192-ctr", "aes256-ctr"],
+                        "signature_algs": ["ssh-rsa", "ssh-dss", "ecdsa-sha2-nistp256", "ssh-ed25519"],
+                    }
+                    conn = await asyncssh.connect(**legacy_opts)
+                else:
+                    raise e
+
+            negotiated_kex = conn.get_extra_info("kex_alg")
+            negotiated_cipher = conn.get_extra_info("cipher_alg")
+
+            # Create IP-segregated directory
+            target_dir = os.path.join(dest_dir, ip)
+            os.makedirs(target_dir, exist_ok=True)
+            
+            # Use original filename for local destination
+            filename = os.path.basename(src)
+            local_dest_path = os.path.join(target_dir, filename)
+
+            # Execute SCP Pull
+            await asyncssh.scp((conn, src), local_dest_path)
+            
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+
+            return SshHostResult(
+                ip=ip,
+                status=SshStatus.SUCCESS,
+                stdout=f"Successfully pulled {src} to {local_dest_path}",
+                latency_ms=round(latency_ms, 2),
+                negotiated_kex=negotiated_kex,
+                negotiated_cipher=negotiated_cipher
+            )
+
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+            error_msg = str(e)
+            if used_fallback:
+                error_msg = f"Legacy Handshake Fail: {error_msg}"
+            
+            return SshHostResult(
+                ip=ip,
+                status=SshStatus.FAILED,
+                latency_ms=round(latency_ms, 2),
+                error_message=error_msg
+            )
+        finally:
+            if conn:
+                conn.close()
+                await conn.wait_closed()
+
 class SshRunnerService:
     """
     Orchestrates high-speed, parallel SSH command executions across multiple network hosts.
@@ -508,6 +689,72 @@ class SshRunnerService:
 
         audit = SshExecutionAudit(
             command=f"playbook:{playbook.name}",
+            targets=targets,
+            success_count=success_count,
+            failed_count=failed_count,
+            results=results,
+            executed_at=datetime.now(timezone.utc)
+        )
+
+        return audit
+
+    async def execute_scp_push_concurrently(self, hosts: List[SshHostConfig], src: str, dest: str) -> SshExecutionAudit:
+        """
+        Concurrently pushes a file to multiple hosts via SCP.
+        """
+        command_label = f"scp push {src} -> {dest}"
+        if not hosts:
+            return SshExecutionAudit(
+                command=command_label,
+                targets=[],
+                success_count=0,
+                failed_count=0,
+                results=[],
+                executed_at=datetime.now(timezone.utc)
+            )
+
+        tasks = [SmartSshClient.scp_push(cfg, src, dest) for cfg in hosts]
+        results: List[SshHostResult] = await asyncio.gather(*tasks)
+
+        success_count = sum(1 for res in results if res.status == SshStatus.SUCCESS)
+        failed_count = sum(1 for res in results if res.status == SshStatus.FAILED)
+        targets = [cfg.ip for cfg in hosts]
+
+        audit = SshExecutionAudit(
+            command=command_label,
+            targets=targets,
+            success_count=success_count,
+            failed_count=failed_count,
+            results=results,
+            executed_at=datetime.now(timezone.utc)
+        )
+
+        return audit
+
+    async def execute_scp_pull_concurrently(self, hosts: List[SshHostConfig], src: str, dest_dir: str) -> SshExecutionAudit:
+        """
+        Concurrently pulls a file from multiple hosts via SCP into IP-segregated folders.
+        """
+        command_label = f"scp pull {src} -> {dest_dir}"
+        if not hosts:
+            return SshExecutionAudit(
+                command=command_label,
+                targets=[],
+                success_count=0,
+                failed_count=0,
+                results=[],
+                executed_at=datetime.now(timezone.utc)
+            )
+
+        tasks = [SmartSshClient.scp_pull(cfg, src, dest_dir) for cfg in hosts]
+        results: List[SshHostResult] = await asyncio.gather(*tasks)
+
+        success_count = sum(1 for res in results if res.status == SshStatus.SUCCESS)
+        failed_count = sum(1 for res in results if res.status == SshStatus.FAILED)
+        targets = [cfg.ip for cfg in hosts]
+
+        audit = SshExecutionAudit(
+            command=command_label,
             targets=targets,
             success_count=success_count,
             failed_count=failed_count,
