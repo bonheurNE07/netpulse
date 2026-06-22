@@ -24,12 +24,19 @@ To natively pull a remote file from multiple hosts, automatically organizing the
 netpulse-ssh scp pull 192.168.1.5 10.0.0.1 --src /etc/nginx/nginx.conf --dest ./backups/ -u admin -p password
 ```
 
+To execute a command on internal targets by multiplexing through a Bastion Host / ProxyJump:
+```bash
+netpulse-ssh execute 10.0.0.5 10.0.0.6 -c "uptime" -u admin -p secret -J proxy_admin@bastion.corp.com --bastion-pass proxy_secret
+```
+
 Options:
 - `-c, --command`: The SSH command to execute (for `execute`).
 - `-u, --user`: The SSH login username.
 - `-p, --pass`: The SSH password.
 - `-e, --enable`: A privilege execution mode password (e.g., Cisco `enable`).
 - `--port`: The SSH port (default `22`).
+- `-J, --jump-host`: ProxyJump Bastion host (e.g., `admin@bastion.corp.com`).
+- `--bastion-pass`: Password for the Bastion host (if not using SSH keys).
 
 ## Standalone API
 
@@ -58,7 +65,9 @@ if __name__ == "__main__":
   ],
   "command": "show version",
   "username": "admin",
-  "password": "secret_password"
+  "password": "secret_password",
+  "jump_host": "proxy_admin@bastion.corp.com",
+  "bastion_pass": "proxy_secret"
 }
 ```
 

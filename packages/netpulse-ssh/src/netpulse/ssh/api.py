@@ -18,6 +18,8 @@ class SshExecuteRequest(BaseModel):
     username: str = Field(..., description="SSH login username.")
     password: Optional[str] = Field(None, description="SSH login password.")
     enable_password: Optional[str] = Field(None, description="Cisco enable password.")
+    jump_host: Optional[str] = Field(None, description="ProxyJump Bastion host (e.g., admin@bastion.local).")
+    bastion_pass: Optional[str] = Field(None, description="Password for the Bastion host.")
     auto_negotiate: bool = Field(True, description="Enable key-exchange auto-negotiate fallbacks.")
     ignore_host_keys: bool = Field(True, description="Ignore host verification checks.")
     timeout_seconds: int = Field(10, description="Connection timeout.")
@@ -37,6 +39,8 @@ async def execute_ssh_command(req: SshExecuteRequest):
                 username=req.username,
                 password=req.password,
                 enable_password=req.enable_password,
+                jump_host=req.jump_host,
+                bastion_pass=req.bastion_pass,
                 auto_negotiate=req.auto_negotiate,
                 ignore_host_keys=req.ignore_host_keys,
                 timeout_seconds=req.timeout_seconds

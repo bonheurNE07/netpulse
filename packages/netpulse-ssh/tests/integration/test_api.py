@@ -67,3 +67,48 @@ def test_api_execute_ssh_command_failure():
         data = response.json()
         assert data["detail"]["error"] == "SshExecutionError"
         assert "Kernel Panic" in data["detail"]["message"]
+
+def test_api_execute_ssh_command_with_proxy():
+    """Verify POST /api/v1/ssh/execute correctly passes jump_host arguments to runner."""
+    client = TestClient(app)
+    
+    mock_audit = SshExecutionAudit(
+        command="uptime",
+        targets=["10.0.0.5"],
+        success_count=1,
+        failed_count=0,
+        results=[
+            SshHostResult(
+                ip="10.0.0.5",
+                status=SshStatus.SUCCESS,
+                stdout="up 3 days",
+                latency_ms=25.0,
+            )
+        ]
+    )
+    
+    with patch("netpulse.ssh.api.SshRunnerService.execute_concurrently", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = mock_audit
+        
+        payload = {
+            "hosts": [{"ip": "10.0.0.5", "port": 22}],
+            "command": "uptime",
+            "username": "admin",
+            "password": "password",
+            "jump_host": "bastion@192.168.1.100",
+            "bastion_pass": "proxy_secret",
+            "timeout_seconds": 10
+        }
+        
+        response = client.post("/api/v1/ssh/execute", json=payload)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["command"] == "uptime"
+        assert data["success_count"] == 1
+        
+        # Verify the runner was called with the correct config
+        mock_exec.assert_called_once()
+        hosts_config = mock_exec.call_args[0][0]
+        assert hosts_config[0].jump_host == "bastion@192.168.1.100"
+        assert hosts_config[0].bastion_pass == "proxy_secret"

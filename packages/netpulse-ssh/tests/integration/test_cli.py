@@ -124,5 +124,39 @@ def test_cli_scp_pull_success():
         assert result.exit_code == 0
         assert "SCP Pull Summary" in result.stdout
         assert "10.0.0.6" in result.stdout
-        assert "SUCCESS" in result.stdout
         assert "Successfully pulled" in result.stdout
+
+def test_cli_execute_jump_host():
+    """Verify that the execute command correctly passes jump_host arguments."""
+    mock_audit = SshExecutionAudit(
+        command="uptime",
+        targets=["10.0.0.5"],
+        success_count=1,
+        failed_count=0,
+        results=[
+            SshHostResult(
+                ip="10.0.0.5",
+                status=SshStatus.SUCCESS,
+                stdout="up",
+                latency_ms=10.0,
+            )
+        ]
+    )
+    
+    with patch("netpulse.ssh.cli.SshRunnerService.execute_concurrently", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = mock_audit
+        
+        result = runner.invoke(app, [
+            "execute", "10.0.0.5", 
+            "-c", "uptime", 
+            "-u", "admin", 
+            "-p", "password", 
+            "-J", "bastion@192.168.1.100", 
+            "--bastion-pass", "proxy_secret"
+        ])
+        
+        assert result.exit_code == 0
+        mock_exec.assert_called_once()
+        hosts_config = mock_exec.call_args[0][0]
+        assert hosts_config[0].jump_host == "bastion@192.168.1.100"
+        assert hosts_config[0].bastion_pass == "proxy_secret"

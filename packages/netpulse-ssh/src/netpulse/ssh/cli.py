@@ -28,6 +28,8 @@ def execute(
     password: str = typer.Option("", "--pass", "-p", help="SSH Password.", hide_input=True, prompt="Password (leave empty if using keys)"),
     enable_password: str = typer.Option("", "--enable", "-e", help="Cisco enable password.", hide_input=True),
     port: int = typer.Option(22, "--port", help="SSH port."),
+    jump_host: str = typer.Option(None, "--jump-host", "-J", help="ProxyJump Bastion host (e.g., admin@bastion.local)."),
+    bastion_pass: str = typer.Option(None, "--bastion-pass", help="Password for the Bastion host.", hide_input=True),
 ):
     """
     Execute a command concurrently across multiple SSH hosts and aggregate the results.
@@ -39,6 +41,8 @@ def execute(
             username=username,
             password=password if password else None,
             enable_password=enable_password if enable_password else None,
+            jump_host=jump_host,
+            bastion_pass=bastion_pass,
         ) for ip in hosts
     ]
 
@@ -75,6 +79,8 @@ def shell(
     password: str = typer.Option("", "--pass", "-p", help="SSH Password.", hide_input=True, prompt="Password (leave empty if using keys)"),
     port: int = typer.Option(22, "--port", help="SSH port."),
     term_type: str = typer.Option("xterm-256color", "--term", help="Terminal type for interactive shell."),
+    jump_host: str = typer.Option(None, "--jump-host", "-J", help="ProxyJump Bastion host (e.g., admin@bastion.local)."),
+    bastion_pass: str = typer.Option(None, "--bastion-pass", help="Password for the Bastion host.", hide_input=True),
 ):
     """
     Open an interactive SSH shell session with a single target host.
@@ -84,6 +90,8 @@ def shell(
         port=port,
         username=username,
         password=password if password else None,
+        jump_host=jump_host,
+        bastion_pass=bastion_pass,
     )
 
     async def run_shell():
@@ -170,6 +178,8 @@ def scp_push(
     username: str = typer.Option(..., "--user", "-u", help="SSH Username.", prompt=True),
     password: str = typer.Option("", "--pass", "-p", help="SSH Password.", hide_input=True, prompt="Password (leave empty if using keys)"),
     port: int = typer.Option(22, "--port", help="SSH port."),
+    jump_host: str = typer.Option(None, "--jump-host", "-J", help="ProxyJump Bastion host (e.g., admin@bastion.local)."),
+    bastion_pass: str = typer.Option(None, "--bastion-pass", help="Password for the Bastion host.", hide_input=True),
 ):
     """
     Push a local file to multiple remote hosts concurrently using SCP.
@@ -180,6 +190,8 @@ def scp_push(
             port=port,
             username=username,
             password=password if password else None,
+            jump_host=jump_host,
+            bastion_pass=bastion_pass,
         ) for ip in hosts
     ]
 
@@ -217,6 +229,8 @@ def scp_pull(
     username: str = typer.Option(..., "--user", "-u", help="SSH Username.", prompt=True),
     password: str = typer.Option("", "--pass", "-p", help="SSH Password.", hide_input=True, prompt="Password (leave empty if using keys)"),
     port: int = typer.Option(22, "--port", help="SSH port."),
+    jump_host: str = typer.Option(None, "--jump-host", "-J", help="ProxyJump Bastion host (e.g., admin@bastion.local)."),
+    bastion_pass: str = typer.Option(None, "--bastion-pass", help="Password for the Bastion host.", hide_input=True),
 ):
     """
     Pull a remote file from multiple hosts concurrently, saving into IP-segregated folders.
@@ -227,6 +241,8 @@ def scp_pull(
             port=port,
             username=username,
             password=password if password else None,
+            jump_host=jump_host,
+            bastion_pass=bastion_pass,
         ) for ip in hosts
     ]
 

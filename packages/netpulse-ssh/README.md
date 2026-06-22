@@ -22,6 +22,7 @@
 ## ✨ Features
 
 - **Massive Concurrency**: Scales horizontally using `asyncio` to execute commands across hundreds of targets simultaneously, dramatically reducing execution time.
+- **Bastion Host Routing (ProxyJump)**: Natively route concurrent execution traffic through an enterprise DMZ Bastion Host. Multiplexes hundreds of internal connections over a single encrypted tunnel to conserve Bastion CPU and port resources.
 - **Concurrent File Management**: Natively utilizes SCP/SFTP protocols to push large firmware payloads or pull configuration backups from 100+ devices simultaneously into IP-segregated folders.
 - **Pure Python PTY Emulator**: Ships with a fully self-contained, cross-platform Pseudo-Terminal (PTY) emulator. Features native raw keystroke capturing (including Arrow keys and Tab-completion) on Windows, entirely independent of the underlying OS SSH binaries.
 - **Legacy Equipment Healing**: Automatically detects strict OpenSSH cipher drops and seamlessly falls back to legacy algorithms (e.g., `diffie-hellman-group1-sha1`, `3des-cbc`) frequently required for older Cisco or Juniper gear.
@@ -66,6 +67,13 @@ netpulse-ssh scp push 192.168.1.5 10.0.0.1 --src ./firmware.bin --dest /flash/ -
 
 # Mass Pull Configurations (Auto-segregated into ./backups/<IP>/)
 netpulse-ssh scp pull 192.168.1.5 10.0.0.1 --src /etc/nginx/nginx.conf --dest ./backups/ -u admin -p password
+```
+
+**Secure Bastion Routing (ProxyJump)**
+Execute commands on internal servers by multiplexing through a single public-facing Bastion host:
+
+```bash
+netpulse-ssh execute 10.0.0.5 10.0.0.6 -c "uptime" -u admin -p secret -J proxy@bastion.corp.com --bastion-pass proxy_secret
 ```
 
 **Interactive Shell**

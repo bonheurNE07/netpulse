@@ -25,7 +25,7 @@ class SmartSshClient:
     """
 
     @classmethod
-    async def connect_and_execute(cls, config: SshHostConfig, command: str) -> SshHostResult:
+    async def connect_and_execute(cls, config: SshHostConfig, command: str, tunnel: Optional[asyncssh.SSHClientConnection] = None) -> SshHostResult:
         """
         Resiliently connects to a host via SSH, performs command executions,
         and logs performance/cryptographic parameters.
@@ -55,6 +55,9 @@ class SmartSshClient:
         if config.ignore_host_keys:
             connect_opts["client_factory"] = TrustingSSHClient
             connect_opts["known_hosts"] = None
+
+        if tunnel:
+            connect_opts["tunnel"] = tunnel
 
         conn = None
         negotiated_kex = None
@@ -158,7 +161,7 @@ class SmartSshClient:
                 await conn.wait_closed()
 
     @classmethod
-    async def connect_and_shell(cls, config: SshHostConfig, term_type: str = "xterm-256color") -> None:
+    async def connect_and_shell(cls, config: SshHostConfig, term_type: str = "xterm-256color", tunnel: Optional[asyncssh.SSHClientConnection] = None) -> None:
         """
         Resiliently connects to a host via SSH and delegates local terminal
         standard IO to a remote interactive PTY session.
@@ -183,6 +186,9 @@ class SmartSshClient:
         if config.ignore_host_keys:
             connect_opts["client_factory"] = TrustingSSHClient
             connect_opts["known_hosts"] = None
+
+        if tunnel:
+            connect_opts["tunnel"] = tunnel
 
         conn = None
         try:
@@ -317,7 +323,7 @@ class SmartSshClient:
             return stdout_data, stderr_data
 
     @classmethod
-    async def connect_and_playbook(cls, config: SshHostConfig, playbook: Playbook) -> SshHostResult:
+    async def connect_and_playbook(cls, config: SshHostConfig, playbook: Playbook, tunnel: Optional[asyncssh.SSHClientConnection] = None) -> SshHostResult:
         """
         Resiliently connects to a host via SSH and sequentially executes
         a series of playbook tasks with full Expect engine support.
@@ -344,6 +350,9 @@ class SmartSshClient:
         if config.ignore_host_keys:
             connect_opts["client_factory"] = TrustingSSHClient
             connect_opts["known_hosts"] = None
+
+        if tunnel:
+            connect_opts["tunnel"] = tunnel
 
         conn = None
         negotiated_kex = None
@@ -439,7 +448,7 @@ class SmartSshClient:
                 await conn.wait_closed()
 
     @classmethod
-    async def scp_push(cls, config: SshHostConfig, src: str, dest: str) -> SshHostResult:
+    async def scp_push(cls, config: SshHostConfig, src: str, dest: str, tunnel: Optional[asyncssh.SSHClientConnection] = None) -> SshHostResult:
         """
         Pushes a local file to the remote host using SCP.
         """
@@ -465,6 +474,9 @@ class SmartSshClient:
         if config.ignore_host_keys:
             connect_opts["client_factory"] = TrustingSSHClient
             connect_opts["known_hosts"] = None
+
+        if tunnel:
+            connect_opts["tunnel"] = tunnel
 
         conn = None
         negotiated_kex = None
@@ -525,7 +537,7 @@ class SmartSshClient:
                 await conn.wait_closed()
 
     @classmethod
-    async def scp_pull(cls, config: SshHostConfig, src: str, dest_dir: str) -> SshHostResult:
+    async def scp_pull(cls, config: SshHostConfig, src: str, dest_dir: str, tunnel: Optional[asyncssh.SSHClientConnection] = None) -> SshHostResult:
         """
         Pulls a remote file from the host using SCP, saving it into an IP-segregated subdirectory.
         """
@@ -551,6 +563,9 @@ class SmartSshClient:
         if config.ignore_host_keys:
             connect_opts["client_factory"] = TrustingSSHClient
             connect_opts["known_hosts"] = None
+
+        if tunnel:
+            connect_opts["tunnel"] = tunnel
 
         conn = None
         negotiated_kex = None
@@ -624,6 +639,28 @@ class SshRunnerService:
     Aggregates outcomes and returns a unified execution audit.
     """
 
+    async def _establish_bastion_tunnel(self, hosts: List[SshHostConfig]) -> Optional[asyncssh.SSHClientConnection]:
+        if not hosts or not hosts[0].jump_host:
+            return None
+            
+        jump_host = hosts[0].jump_host
+        user, host = jump_host.split('@') if '@' in jump_host else (None, jump_host)
+        
+        opts = {
+            "host": host,
+            "username": user,
+            "password": hosts[0].bastion_pass,
+            "known_hosts": None,
+        }
+        
+        if hosts[0].ssh_key:
+            opts["client_keys"] = [hosts[0].ssh_key]
+            
+        if hosts[0].ignore_host_keys:
+            opts["client_factory"] = TrustingSSHClient
+            
+        return await asyncssh.connect(**opts)
+
     async def execute_concurrently(self, hosts: List[SshHostConfig], command: str) -> SshExecutionAudit:
         """
         Concurrently executes a command across multiple host configurations.
@@ -645,9 +682,29 @@ class SshRunnerService:
                 executed_at=datetime.now(timezone.utc)
             )
 
-        # Trigger concurrent executions using asyncio.gather
-        tasks = [SmartSshClient.connect_and_execute(cfg, command) for cfg in hosts]
-        results: List[SshHostResult] = await asyncio.gather(*tasks)
+        try:
+            tunnel_conn = await self._establish_bastion_tunnel(hosts)
+        except Exception as e:
+            return SshExecutionAudit(
+                command=command,
+                targets=[cfg.ip for cfg in hosts],
+                success_count=0,
+                failed_count=len(hosts),
+                results=[
+                    SshHostResult(ip=cfg.ip, status=SshStatus.FAILED, error_message=f"Bastion Connection Failed: {e}", latency_ms=0.0) 
+                    for cfg in hosts
+                ],
+                executed_at=datetime.now(timezone.utc)
+            )
+
+        try:
+            # Trigger concurrent executions using asyncio.gather
+            tasks = [SmartSshClient.connect_and_execute(cfg, command, tunnel=tunnel_conn) for cfg in hosts]
+            results: List[SshHostResult] = await asyncio.gather(*tasks)
+        finally:
+            if tunnel_conn:
+                tunnel_conn.close()
+                await tunnel_conn.wait_closed()
 
         # Count outcomes and targets
         success_count = sum(1 for res in results if res.status == SshStatus.SUCCESS)
@@ -680,8 +737,28 @@ class SshRunnerService:
                 executed_at=datetime.now(timezone.utc)
             )
 
-        tasks = [SmartSshClient.connect_and_playbook(cfg, playbook) for cfg in hosts]
-        results: List[SshHostResult] = await asyncio.gather(*tasks)
+        try:
+            tunnel_conn = await self._establish_bastion_tunnel(hosts)
+        except Exception as e:
+            return SshExecutionAudit(
+                command=f"playbook:{playbook.name}",
+                targets=[cfg.ip for cfg in hosts],
+                success_count=0,
+                failed_count=len(hosts),
+                results=[
+                    SshHostResult(ip=cfg.ip, status=SshStatus.FAILED, error_message=f"Bastion Connection Failed: {e}", latency_ms=0.0) 
+                    for cfg in hosts
+                ],
+                executed_at=datetime.now(timezone.utc)
+            )
+
+        try:
+            tasks = [SmartSshClient.connect_and_playbook(cfg, playbook, tunnel=tunnel_conn) for cfg in hosts]
+            results: List[SshHostResult] = await asyncio.gather(*tasks)
+        finally:
+            if tunnel_conn:
+                tunnel_conn.close()
+                await tunnel_conn.wait_closed()
 
         success_count = sum(1 for res in results if res.status == SshStatus.SUCCESS)
         failed_count = sum(1 for res in results if res.status == SshStatus.FAILED)
@@ -713,8 +790,28 @@ class SshRunnerService:
                 executed_at=datetime.now(timezone.utc)
             )
 
-        tasks = [SmartSshClient.scp_push(cfg, src, dest) for cfg in hosts]
-        results: List[SshHostResult] = await asyncio.gather(*tasks)
+        try:
+            tunnel_conn = await self._establish_bastion_tunnel(hosts)
+        except Exception as e:
+            return SshExecutionAudit(
+                command=command_label,
+                targets=[cfg.ip for cfg in hosts],
+                success_count=0,
+                failed_count=len(hosts),
+                results=[
+                    SshHostResult(ip=cfg.ip, status=SshStatus.FAILED, error_message=f"Bastion Connection Failed: {e}", latency_ms=0.0) 
+                    for cfg in hosts
+                ],
+                executed_at=datetime.now(timezone.utc)
+            )
+
+        try:
+            tasks = [SmartSshClient.scp_push(cfg, src, dest, tunnel=tunnel_conn) for cfg in hosts]
+            results: List[SshHostResult] = await asyncio.gather(*tasks)
+        finally:
+            if tunnel_conn:
+                tunnel_conn.close()
+                await tunnel_conn.wait_closed()
 
         success_count = sum(1 for res in results if res.status == SshStatus.SUCCESS)
         failed_count = sum(1 for res in results if res.status == SshStatus.FAILED)
@@ -746,8 +843,28 @@ class SshRunnerService:
                 executed_at=datetime.now(timezone.utc)
             )
 
-        tasks = [SmartSshClient.scp_pull(cfg, src, dest_dir) for cfg in hosts]
-        results: List[SshHostResult] = await asyncio.gather(*tasks)
+        try:
+            tunnel_conn = await self._establish_bastion_tunnel(hosts)
+        except Exception as e:
+            return SshExecutionAudit(
+                command=command_label,
+                targets=[cfg.ip for cfg in hosts],
+                success_count=0,
+                failed_count=len(hosts),
+                results=[
+                    SshHostResult(ip=cfg.ip, status=SshStatus.FAILED, error_message=f"Bastion Connection Failed: {e}", latency_ms=0.0) 
+                    for cfg in hosts
+                ],
+                executed_at=datetime.now(timezone.utc)
+            )
+
+        try:
+            tasks = [SmartSshClient.scp_pull(cfg, src, dest_dir, tunnel=tunnel_conn) for cfg in hosts]
+            results: List[SshHostResult] = await asyncio.gather(*tasks)
+        finally:
+            if tunnel_conn:
+                tunnel_conn.close()
+                await tunnel_conn.wait_closed()
 
         success_count = sum(1 for res in results if res.status == SshStatus.SUCCESS)
         failed_count = sum(1 for res in results if res.status == SshStatus.FAILED)
@@ -769,5 +886,12 @@ class SshRunnerService:
         Opens a fully interactive SSH shell natively over the terminal.
         """
         client = SmartSshClient()
-        await client.connect_and_shell(config, term_type=term_type)
+        tunnel_conn = None
+        try:
+            tunnel_conn = await self._establish_bastion_tunnel([config])
+            await client.connect_and_shell(config, term_type=term_type, tunnel=tunnel_conn)
+        finally:
+            if tunnel_conn:
+                tunnel_conn.close()
+                await tunnel_conn.wait_closed()
 

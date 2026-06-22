@@ -21,6 +21,8 @@ class SshHostConfig(BaseModel):
     password: Optional[str] = Field(None, description="SSH login password.")
     enable_password: Optional[str] = Field(None, description="Cisco enable password.")
     ssh_key: Optional[str] = Field(None, description="Path to SSH private key.")
+    jump_host: Optional[str] = Field(None, description="ProxyJump Bastion host (e.g., admin@bastion.local).")
+    bastion_pass: Optional[str] = Field(None, description="Password for the Bastion host.")
     auto_negotiate: bool = Field(True, description="Attempt dynamic legacy cipher negotiation if handshake fails.")
     ignore_host_keys: bool = Field(True, description="Bypass strict SSH host key checking.")
     timeout_seconds: int = Field(10, description="SSH connection timeout.")
