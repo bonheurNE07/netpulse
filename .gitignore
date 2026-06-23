@@ -27,3 +27,6 @@ __pycache__/
 scratch/
 netpulse.db
 .netpulse-ipam.db
+
+# AI Tools/Docs
+ai/
