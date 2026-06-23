@@ -4,10 +4,30 @@ build-backend = "hatchling.build"
 
 [project]
 name = "netpulse-subnet"
-version = "0.1.4"
-description = "Subnetting and network discovery tool"
-readme = "README.md"
+version = "0.1.5"
+description = "High-performance IPv4/IPv6 subnetting calculator, VLSM allocator, and conflict detector."
+readme = "README-pypi.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
+authors = [
+    { name = "Ndeze Bonheur Emmanuel", email = "bonheurndezenc@gmail.com" }
+]
+keywords = [
+    "network", "subnet", "vlsm", "flsm", "ipam", "ipv4", "ipv6", "routing", "calculator"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Telecommunications Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Networking",
+]
 dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
@@ -15,12 +35,17 @@ dependencies = [
     "uvicorn>=0.22.0"
 ]
 
+[project.urls]
+Homepage = "https://github.com/bendeze/netpulse/tree/main/packages/netpulse-subnet"
+Documentation = "https://github.com/bendeze/netpulse/tree/main/packages/netpulse-subnet/docs"
+Repository = "https://github.com/bendeze/netpulse"
+"Bug Tracker" = "https://github.com/bendeze/netpulse/issues"
+
 [project.scripts]
 netpulse-subnet = "netpulse.subnet.cli:app"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/netpulse"]
+
 [tool.uv.sources]
 netpulse-core = { workspace = true }
-
-
-

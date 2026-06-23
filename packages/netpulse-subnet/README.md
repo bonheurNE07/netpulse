@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bonheurNE07/netpulse/main/packages/netpulse-subnet/docs/assets/logo-removebg-preview.png" alt="NetPulse Subnet Logo" width="250"/>
+  <img src="https://raw.githubusercontent.com/bendeze/netpulse/main/packages/netpulse-subnet/docs/assets/logo-removebg-preview.png" alt="NetPulse Subnet Logo" width="250"/>
 </p>
 
 <h1 align="center">NetPulse Subnet</h1>
@@ -11,13 +11,15 @@
 <p align="center">
   <a href="https://pypi.org/project/netpulse-subnet/"><img src="https://img.shields.io/pypi/v/netpulse-subnet?color=007ec6&label=pypi%20package" alt="PyPI version"></a>
   <a href="https://pypi.org/project/netpulse-subnet/"><img src="https://img.shields.io/pypi/pyversions/netpulse-subnet" alt="Python Versions"></a>
-  <a href="https://github.com/bonheurNE07/netpulse/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://github.com/bonheurNE07/netpulse"><img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black"></a>
+  <a href="https://github.com/bendeze/netpulse/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://github.com/bendeze/netpulse"><img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black"></a>
 </p>
 
 ---
 
-**`netpulse-subnet`** is a standalone network administration tool extracted from the larger [NetPulse](https://github.com/bonheurNE07/netpulse) discovery suite. It is built to help network engineers programmatically calculate, partition, and optimize IPv4 and IPv6 address spaces natively in Python or directly from the terminal.
+**`netpulse-subnet`** is a standalone network administration tool extracted from the larger [NetPulse](https://github.com/bendeze/netpulse) discovery suite. It is built to help network engineers programmatically calculate, partition, and optimize IPv4 and IPv6 address spaces natively in Python or directly from the terminal.
+
+📦 **Official PyPI Release:** Download and view package details directly on PyPI at [https://pypi.org/project/netpulse-subnet/](https://pypi.org/project/netpulse-subnet/)
 
 ## ✨ Features
 
