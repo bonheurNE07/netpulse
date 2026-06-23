@@ -7,17 +7,44 @@ build-backend = "hatchling.build"
 
 [project]
 name = "netpulse"
-version = "0.1.0.4"
+version = "0.1.0.5"
 description = "High-performance network discovery and subnet analysis suite with native Rust speed."
-readme = "README.md"
+readme = "README-pypi.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
+authors = [
+    { name = "Ndeze Bonheur Emmanuel", email = "bonheurndezenc@gmail.com" }
+]
+keywords = [
+    "network", "discovery", "arp", "icmp", "subnet", "calculator", "vlsm", "ssh", "rust"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: System :: Networking",
+    "Topic :: System :: Systems Administration",
+]
 dependencies = [
     "netpulse-core",
     "netpulse-subnet",
     "netpulse-ssh",
     "netpulse-discovery",
 ]
+
+[project.urls]
+Homepage = "https://github.com/bendeze/netpulse"
+Documentation = "https://github.com/bendeze/netpulse/blob/main/README.md"
+Repository = "https://github.com/bendeze/netpulse"
+"Bug Tracker" = "https://github.com/bendeze/netpulse/issues"
 
 [project.scripts]
 netpulse = "netpulse.netpulse_cli.main:app"

@@ -3,7 +3,7 @@ name: Build and Publish Wheels
 on:
   push:
     tags:
-      - 'netpulse-discovery-v*'
+      - 'netpulse-v*'
 
 jobs:
   build_wheels:

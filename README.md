@@ -4,7 +4,7 @@
 [![Rust](https://img.shields.io/badge/rust-native-orange.svg)](https://www.rust-lang.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100.0%2B-green.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
-[![Build and Publish Wheels](https://github.com/bonheurNE07/netpulse/actions/workflows/release.yml/badge.svg)](https://github.com/bonheurNE07/netpulse/actions/workflows/release.yml)
+[![Build and Publish Wheels](https://github.com/bendeze/netpulse/actions/workflows/release.yml/badge.svg)](https://github.com/bendeze/netpulse/actions/workflows/release.yml)
 
 **NetPulse** is a high-performance, modern network discovery and analysis suite. It marries the speed and safety of low-level **Rust raw-socket packet crafting** with the developer ergonomics of **Python, FastAPI, and Typer**.
 
